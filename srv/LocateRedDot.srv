@@ -1,0 +1,4 @@
+std_msgs/Empty empty
+---
+bool detected_red_dot
+geometry_msgs/Point center_of_point

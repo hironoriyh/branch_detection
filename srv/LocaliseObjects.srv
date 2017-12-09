@@ -1,0 +1,6 @@
+bool use_min_object_length
+float64  min_object_length
+---
+std_msgs/String[] model_ids
+geometry_msgs/Pose[] detected_model_poses
+geometry_msgs/Point[] bounding_boxes

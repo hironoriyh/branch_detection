@@ -1,0 +1,4 @@
+std_msgs/String[] models_to_detect
+---
+std_msgs/String[] model_ids
+geometry_msgs/Pose[] detected_model_poses
