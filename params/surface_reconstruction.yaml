@@ -3,9 +3,9 @@ model_folder: ""
 number_of_average_clouds: 3
 number_of_median_clouds: 3
 
-z_threshold: 0.005
+z_threshold: 0.02
 planarSegmentationTolerance: 0.01
-min_number_of_inliers: 30000
+min_number_of_inliers: 10000
 xmin: -0.4
 xmax: 0.4
 ymin: -0.4
@@ -25,7 +25,7 @@ inlier_dist_validation: 0.0015
 
 grid_res: 200
 use_saved_pc: true
-#full_display: false
+full_display: true
 #save_clouds: true
 
 point_cloud_topic: /sr300/depth_registered/points

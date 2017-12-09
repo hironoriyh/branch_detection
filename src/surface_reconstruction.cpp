@@ -41,6 +41,7 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/ModelCoefficients.h>
 
+#include <pcl/segmentation/region_growing.h>
 
 //using namespace point_cloud_filtering;
 
@@ -129,7 +130,7 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
     PCL_ERROR("Couldn't read pcd file \n");
   }
 
-	preprocess(cloud_ptr);
+	// preprocess(cloud_ptr);
 	DownSample(cloud_ptr);
 	computeNormals(cloud_ptr, cloud_normals);
 
@@ -174,16 +175,50 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
 
   std::cout << "combine points and normals" << std::endl;
   PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
-
-//	PointCloud<PointXYZ>::Ptr no_color_cloud_ptr(new PointCloud<PointXYZ>);
-//	copyPointCloud(*cloud_ptr, *no_color_cloud_ptr);
 	concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
-
 
   std::string path = "/home/hyoshdia/Documents/realsense_pcl/cloud.pcd";
   io::savePCDFileASCII(path, *cloud_ptr);
   path = "/home/hyoshdia/Documents/realsense_pcl/cloud.ply";
   io::savePLYFile(path, *cloud_ptr);
+
+
+  std::cout << "begin region growing" << std::endl;
+  pcl::RegionGrowing<pcl::PointType, pcl::Normal> reg;
+  reg.setMinClusterSize (50);
+  reg.setMaxClusterSize (1000000);
+  reg.setSearchMethod (tree);
+  reg.setNumberOfNeighbours (30);
+  reg.setInputCloud (cloud_normals);
+  //reg.setIndices (indices);
+  reg.setInputNormals (normals);
+  reg.setSmoothnessThreshold (3.0 / 180.0 * M_PI);
+  reg.setCurvatureThreshold (1.0);
+
+  std::vector <pcl::PointIndices> clusters;
+  reg.extract (clusters);
+
+  std::cout << "Number of clusters is equal to " << clusters.size () << std::endl;
+  std::cout << "First cluster has " << clusters[0].indices.size () << " points." << endl;
+  std::cout << "These are the indices of the points of the initial" <<
+    std::endl << "cloud that belong to the first cluster:" << std::endl;
+  int counter = 0;
+  while (counter < clusters[0].indices.size ())
+  {
+    std::cout << clusters[0].indices[counter] << ", ";
+    counter++;
+    if (counter % 10 == 0)
+      std::cout << std::endl;
+  }
+  std::cout << std::endl;
+
+  // pcl::PointCloud <pcl::PointType>::Ptr colored_cloud = reg.getColoredCloud ();
+  // pcl::visualization::CloudViewer viewer ("Cluster viewer");
+  // viewer.showCloud(colored_cloud);
+  // while (!viewer.wasStopped ())
+  // {
+  // }
+
 
   std::cout << "begin poisson reconstruction" << std::endl;
   Poisson<PointXYZRGBNormal> poisson;
