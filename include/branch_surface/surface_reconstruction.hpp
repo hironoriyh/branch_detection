@@ -49,7 +49,7 @@ private:
 
 private:
 
-	bool preprocess(PointCloud<PointXYZ>::Ptr preprocessed_cloud_ptr_);
+	bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 
 	bool DownSample(PointCloud<PointType>::Ptr &cloud_);
 
@@ -58,7 +58,7 @@ private:
 	ros::NodeHandle nodeHandle_;
 
 	std::vector<PointCloud<PointXYZRGB> > colored_cloud_vector_;
-    std::vector<PointCloud<PointType>> cloud_vector_;
+  std::vector<PointCloud<PointType>> cloud_vector_;
 
 
 	float leaf_size_;
@@ -85,6 +85,7 @@ private:
 	double ymax_;
 	double zmin_;
 	double zmax_;
+	bool use_saved_pc_;
 
 	int grid_res_;
 	std::vector<double> bound_vec_;

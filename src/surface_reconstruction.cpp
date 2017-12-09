@@ -78,6 +78,7 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 	nodeHandle.getParam("/surface_reconstruction_service/zmin", zmin_);
 	nodeHandle.getParam("/surface_reconstruction_service/zmax", zmax_);
 	nodeHandle.getParam("/surface_reconstruction_service/point_cloud_topic", point_cloud_topic_);
+  nodeHandle.getParam("/surface_reconstruction_service/use_saved_pc", use_saved_pc_);
 
 
 	bound_vec_.push_back(xmin_);
@@ -102,26 +103,32 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
 {
 
   std::cout << "service called!" << std::endl;
+//   // Sample clouds
+//   ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1,
+//                                               &SurfaceReconstructionSrv::saveCloud, this);
+//   ros::Rate r(60);
+//   std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
+//
+//   while (colored_cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
+// //    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
+//     ros::spinOnce();
+//     r.sleep();
+//   }
+//   std::cout << "Clouds are sampled." << "  width = " << colored_cloud_vector_[0].width << "  height = "
+//             << colored_cloud_vector_[0].height << "  size = " << colored_cloud_vector_[0].size() << std::endl;
 
-  // Sample clouds
-  ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1,
-                                              &SurfaceReconstructionSrv::saveCloud, this);
-  ros::Rate r(60);
-  std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
 
-  while (colored_cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
-//    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
-    ros::spinOnce();
-    r.sleep();
-  }
-  std::cout << "Clouds are sampled." << "  width = " << colored_cloud_vector_[0].width << "  height = "
-            << colored_cloud_vector_[0].height << "  size = " << colored_cloud_vector_[0].size() << std::endl;
-
-  PointCloud<PointXYZRGB>::Ptr colored_cloud_ptr (new PointCloud<PointXYZRGB>(colored_cloud_vector_[0]));
-  PointCloud<PointType>::Ptr cloud_ptr (new PointCloud<PointType>(cloud_vector_[0]));
-//  copyPointCloud(*colored_cloud_ptr, *cloud_ptr);
-
+  // if(use_saved_pc_)
+  PointCloud<PointType>::Ptr cloud_ptr (new PointCloud<PointType>);
+  // else PointCloud<PointType>::Ptr cloud_ptr (new PointCloud<PointType>(cloud_vector_[0]));
   PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
+
+  // loadPCD or pcd
+  std::string file_name ="/home/hyoshdia/Documents/realsense_pcl/cloud_raw.pcd";
+  if (pcl::io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1){
+    PCL_ERROR("Couldn't read pcd file \n");
+  }
+
 	preprocess(cloud_ptr);
 	DownSample(cloud_ptr);
 	computeNormals(cloud_ptr, cloud_normals);
@@ -165,33 +172,34 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
 //    cloud_normals->points[i].normal_z *= -1;
 //  }
 
-//  std::cout << "combine points and normals" << std::endl;
-//  PointCloud<PointNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointNormal>());
-//
-//  if(typeid(PointType) == typeid(PointXYZRGB)){
-//    PointCloud<PointXYZ>::Ptr no_color_cloud_ptr(new PointCloud<PointXYZ>);
-//    copyPointCloud(*cloud_ptr, *no_color_cloud_ptr);
-//    concatenateFields(*no_color_cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
-//  }
-//  else
-//    concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
-//
-//
-//  std::string path = "/home/hyoshdia/Documents/realsense_pcl/cloud.pcd";
-//  io::savePCDFileASCII(path, *colored_cloud_ptr);
-//
-//  path = "/home/hyoshdia/Documents/realsense_pcl/cloud.ply";
-//  io::savePLYFile(path, *colored_cloud_ptr);
-//
-//  std::cout << "begin poisson reconstruction" << std::endl;
-//  Poisson<PointNormal> poisson;
-//  poisson.setDepth(9);
-//  poisson.setManifold(false);
-//  poisson.setInputCloud(cloud_smoothed_normals);
-//  PolygonMesh mesh;
-//  poisson.reconstruct(mesh);
-//  path = "/home/hyoshdia/Documents/realsense_pcl/poisson.ply";
-//  io::savePLYFile(path, mesh);
+  std::cout << "combine points and normals" << std::endl;
+  PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
+
+//	PointCloud<PointXYZ>::Ptr no_color_cloud_ptr(new PointCloud<PointXYZ>);
+//	copyPointCloud(*cloud_ptr, *no_color_cloud_ptr);
+	concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
+
+
+  std::string path = "/home/hyoshdia/Documents/realsense_pcl/cloud.pcd";
+  io::savePCDFileASCII(path, *cloud_ptr);
+  path = "/home/hyoshdia/Documents/realsense_pcl/cloud.ply";
+  io::savePLYFile(path, *cloud_ptr);
+
+  std::cout << "begin poisson reconstruction" << std::endl;
+  Poisson<PointXYZRGBNormal> poisson;
+  poisson.setDepth(9);
+  poisson.setManifold(0);
+  // poisson.setSmaplesPerNode(1.0);
+  // poisson.setRatioDiameter(1.25);
+  poisson.setDegree(2);
+  poisson.setIsoDivide(8);
+  // poisson.setSolveDivide(8);
+  poisson.setOutputPolygons(0);
+  poisson.setInputCloud(cloud_smoothed_normals);
+  PolygonMesh mesh;
+  poisson.reconstruct(mesh);
+  path = "/home/hyoshdia/Documents/realsense_pcl/poisson.ply";
+  io::savePLYFile(path, mesh);
 
 //  std::cout << "begin marching cube" << std::endl;
 //  MarchingCubes<PointNormal> * mc;
@@ -243,12 +251,12 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
 //    boost::this_thread::sleep(boost::posix_time::microseconds(100000));
 //  }
 
-  colored_cloud_vector_.clear();
+  std::cout << "service done!" << std::endl;
 
   return true;
 }
 
-bool SurfaceReconstructionSrv::preprocess(PointCloud<PointXYZ>::Ptr preprocessed_cloud_ptr_) {
+bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_) {
   // DO NOT MODIFY! Parameter recalculation
   std::vector<float> boundaries;
   boundaries.push_back(xmin_);
@@ -312,7 +320,7 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsV
   std::shared_ptr<visualization::PCLVisualizer> viewer(
       new visualization::PCLVisualizer("3D Viewer"));
   viewer->setBackgroundColor(1.0, 1.0, 1.0);
-  viewer->addPointCloud<PointXYZ>(cloud, "sample cloud");
+  viewer->addPointCloud<PointType>(cloud, "sample cloud");
   viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 0.0, 0.0, 1.0,
                                            "sample cloud");
   viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_POINT_SIZE, 2,
@@ -347,13 +355,13 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 {
   std::cout << "the length of cloud sensor msg is " << cloud.data[100] << std::endl;
 
-  PointCloud <PointXYZRGB> new_cloud;
-  fromROSMsg(cloud, new_cloud);
-  colored_cloud_vector_.push_back(new_cloud);
+//  PointCloud <PointXYZRGB> new_cloud;
+//  fromROSMsg(cloud, new_cloud);
+//  colored_cloud_vector_.push_back(new_cloud);
 
   PointCloud<PointType> new_cloud_2;
-//  fromROSMsg(cloud, new_cloud_2);
-  copyPointCloud(new_cloud, new_cloud_2);
+  fromROSMsg(cloud, new_cloud_2);
+//  copyPointCloud(new_cloud, new_cloud_2);
   cloud_vector_.push_back(new_cloud_2);
 }
 

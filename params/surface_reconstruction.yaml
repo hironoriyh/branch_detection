@@ -24,7 +24,7 @@ min_inlier_ratio_validation: 12
 inlier_dist_validation: 0.0015
 
 grid_res: 200
-
+use_saved_pc: true
 #full_display: false
 #save_clouds: true
 
