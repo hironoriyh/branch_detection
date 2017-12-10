@@ -18,7 +18,6 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 
-#include <pcl/search/kdtree.h>
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/surface/mls.h>
 #include <pcl/common/common.h>
@@ -42,6 +41,7 @@
 #include <pcl/ModelCoefficients.h>
 
 #include <pcl/segmentation/region_growing.h>
+#include <pcl/search/search.h>
 
 //using namespace point_cloud_filtering;
 
@@ -49,7 +49,6 @@ namespace surface_reconstruction_srv {
 
 SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      colored_cloud_vector_(),
       bound_vec_()
 {
 
@@ -121,57 +120,17 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
 
   // if(use_saved_pc_)
   PointCloud<PointType>::Ptr cloud_ptr (new PointCloud<PointType>);
-  // else PointCloud<PointType>::Ptr cloud_ptr (new PointCloud<PointType>(cloud_vector_[0]));
   PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
 
   // loadPCD or pcd
   std::string file_name ="/home/hyoshdia/Documents/realsense_pcl/cloud_raw.pcd";
-  if (pcl::io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1){
+  if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1){
     PCL_ERROR("Couldn't read pcd file \n");
   }
 
-	// preprocess(cloud_ptr);
+	preprocess(cloud_ptr);
 	DownSample(cloud_ptr);
 	computeNormals(cloud_ptr, cloud_normals);
-
-//  std::cout << "begin passthrough filter" << std::endl;
-//  PointCloud<PointType>::Ptr filtered(new PointCloud<PointType>());
-//  PassThrough<PointType> filter;
-//  filter.setInputCloud(cloud_ptr);
-//  filter.filter(*filtered);
-//  std::cout << "passthrough filter complete" << std::endl;
-//
-//  std::cout << "begin moving least squares" << std::endl;
-//  MovingLeastSquares<PointType, PointType> mls;
-//  mls.setInputCloud(filtered);
-//  mls.setSearchRadius(0.01);
-//  mls.setPolynomialFit(true);
-//  mls.setPolynomialOrder(2);
-//  mls.setUpsamplingMethod(MovingLeastSquares<PointType, PointType>::SAMPLE_LOCAL_PLANE);
-//  mls.setUpsamplingRadius(0.005);
-//  mls.setUpsamplingStepSize(0.003);
-//  PointCloud<PointType>::Ptr cloud_smoothed(new PointCloud<PointType>());
-//  mls.process(*cloud_smoothed);
-//  std::cout << "MLS complete" << std::endl;
-//
-//  std::cout << "begin normal estimation" << std::endl;
-//  NormalEstimationOMP<PointType, Normal> ne;
-//  ne.setNumberOfThreads(8);
-//  ne.setInputCloud(cloud_ptr);
-//  ne.setRadiusSearch(0.01);
-//  Eigen::Vector4f centroid;
-//  compute3DCentroid(*cloud_ptr, centroid);
-//  ne.setViewPoint(centroid[0], centroid[1], centroid[2]);
-//
-//  ne.compute(*cloud_normals);
-//  std::cout << "normal estimation complete" << std::endl;
-//  std::cout << "reverse normals' direction" << std::endl;
-//
-//  for (size_t i = 0; i < cloud_normals->size(); ++i) {
-//    cloud_normals->points[i].normal_x *= -1;
-//    cloud_normals->points[i].normal_y *= -1;
-//    cloud_normals->points[i].normal_z *= -1;
-//  }
 
   std::cout << "combine points and normals" << std::endl;
   PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
@@ -182,26 +141,29 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
   path = "/home/hyoshdia/Documents/realsense_pcl/cloud.ply";
   io::savePLYFile(path, *cloud_ptr);
 
-
   std::cout << "begin region growing" << std::endl;
-  pcl::RegionGrowing<pcl::PointType, pcl::Normal> reg;
+  RegionGrowing<PointXYZ, Normal> reg;
   reg.setMinClusterSize (50);
   reg.setMaxClusterSize (1000000);
+  search::Search<PointXYZ>::Ptr tree (new search::KdTree<PointXYZ>);
   reg.setSearchMethod (tree);
   reg.setNumberOfNeighbours (30);
-  reg.setInputCloud (cloud_normals);
+  PointCloud<PointXYZ>::Ptr new_cloud(new PointCloud<PointXYZ>);
+  copyPointCloud(*cloud_ptr, *new_cloud);
+
+  std::cout << "set input cloud" << std::endl;
+  reg.setInputCloud (new_cloud);
   //reg.setIndices (indices);
-  reg.setInputNormals (normals);
+  reg.setInputNormals (cloud_normals);
   reg.setSmoothnessThreshold (3.0 / 180.0 * M_PI);
   reg.setCurvatureThreshold (1.0);
-
-  std::vector <pcl::PointIndices> clusters;
+  std::vector <PointIndices> clusters;
   reg.extract (clusters);
 
   std::cout << "Number of clusters is equal to " << clusters.size () << std::endl;
   std::cout << "First cluster has " << clusters[0].indices.size () << " points." << endl;
   std::cout << "These are the indices of the points of the initial" <<
-    std::endl << "cloud that belong to the first cluster:" << std::endl;
+  std::endl << "cloud that belong to the first cluster:" << std::endl;
   int counter = 0;
   while (counter < clusters[0].indices.size ())
   {
@@ -210,15 +172,14 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
     if (counter % 10 == 0)
       std::cout << std::endl;
   }
+
   std::cout << std::endl;
-
-  // pcl::PointCloud <pcl::PointType>::Ptr colored_cloud = reg.getColoredCloud ();
-  // pcl::visualization::CloudViewer viewer ("Cluster viewer");
-  // viewer.showCloud(colored_cloud);
-  // while (!viewer.wasStopped ())
-  // {
-  // }
-
+  PointCloud <PointXYZRGB>::Ptr colored_cloud = reg.getColoredCloud ();
+  visualization::CloudViewer viewer ("Cluster viewer");
+  viewer.showCloud(colored_cloud);
+  while (!viewer.wasStopped ())
+  {
+  }
 
   std::cout << "begin poisson reconstruction" << std::endl;
   Poisson<PointXYZRGBNormal> poisson;
@@ -320,8 +281,7 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_) {
   ROS_INFO("Downsampled");
   ROS_INFO_STREAM("num of samples before down sample: " << cloud_->size());
 
-  PointCloud<PointType>::Ptr cloud_downsampled(
-      new PointCloud<PointType>());
+  PointCloud<PointType>::Ptr cloud_downsampled(new PointCloud<PointType>());
   VoxelGrid<PointType> sor;
   sor.setInputCloud(cloud_);
   sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
@@ -362,9 +322,9 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsV
                                            "sample cloud");
 
   viewer->addPointCloudNormals<PointType, Normal>(cloud, normals, 10, 0.05, "normals");
-  viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0,
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0,
                                            "normals");
-  viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 0.01,
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_LINE_WIDTH, 0.01,
                                            "normals");
 
   viewer->addCoordinateSystem(0.1);
@@ -373,13 +333,13 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsV
   return (viewer);
 }
 
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis (PointCloud<pcl::PointXYZRGB>::ConstPtr cloud)
+std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis (PointCloud<PointXYZRGB>::ConstPtr cloud)
 {
-  std::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  std::shared_ptr<visualization::PCLVisualizer> viewer (new visualization::PCLVisualizer ("3D Viewer"));
   viewer->setBackgroundColor (1.0, 1.0, 1.0);
-  pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud);
-  viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgb, "sample cloud");
-  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+  visualization::PointCloudColorHandlerRGBField<PointXYZRGB> rgb(cloud);
+  viewer->addPointCloud<PointXYZRGB> (cloud, rgb, "sample cloud");
+  viewer->setPointCloudRenderingProperties (visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
 
   viewer->addCoordinateSystem (0.1);
   viewer->setCameraPosition(0,0,0.1, 0.5, 0.0, 0.0, 0.1);  viewer->initCameraParameters ();

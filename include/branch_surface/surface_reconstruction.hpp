@@ -14,6 +14,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/conversions.h>
 #include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/search/kdtree.h>
 
 #include <std_srvs/Empty.h>
 using namespace pcl;
@@ -57,8 +58,8 @@ private:
 
 	ros::NodeHandle nodeHandle_;
 
-	std::vector<PointCloud<PointXYZRGB> > colored_cloud_vector_;
   std::vector<PointCloud<PointType>> cloud_vector_;
+  search::KdTree<PointType>::Ptr tree_;
 
 
 	float leaf_size_;
