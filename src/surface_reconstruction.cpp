@@ -41,6 +41,7 @@
 #include <pcl/ModelCoefficients.h>
 
 #include <pcl/segmentation/region_growing.h>
+#include <pcl/segmentation/region_growing_rgb.h>
 #include <pcl/search/search.h>
 
 //using namespace point_cloud_filtering;
@@ -150,8 +151,6 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
   reg.setNumberOfNeighbours (30);
   PointCloud<PointXYZ>::Ptr new_cloud(new PointCloud<PointXYZ>);
   copyPointCloud(*cloud_ptr, *new_cloud);
-
-  std::cout << "set input cloud" << std::endl;
   reg.setInputCloud (new_cloud);
   //reg.setIndices (indices);
   reg.setInputNormals (cloud_normals);
@@ -164,21 +163,39 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
   std::cout << "First cluster has " << clusters[0].indices.size () << " points." << endl;
   std::cout << "These are the indices of the points of the initial" <<
   std::endl << "cloud that belong to the first cluster:" << std::endl;
-  int counter = 0;
-  while (counter < clusters[0].indices.size ())
-  {
-    std::cout << clusters[0].indices[counter] << ", ";
-    counter++;
-    if (counter % 10 == 0)
-      std::cout << std::endl;
+
+  IndicesPtr indices (new std::vector <int>);
+  PassThrough<PointType> pass;
+  pass.setInputCloud(cloud_ptr);
+  pass.setFilterFieldName("z");
+  pass.setFilterLimits(0.0, 1.0);
+  pass.filter(*indices);
+
+  RegionGrowingRGB<PointType> reg_rgb;
+  reg_rgb.setInputCloud (cloud_ptr);
+  reg_rgb.setIndices (indices);
+  search::Search<PointType>::Ptr tree_rgb (new search::KdTree<PointType>);
+  reg_rgb.setSearchMethod (tree_rgb);
+  reg_rgb.setDistanceThreshold (10);
+  reg_rgb.setPointColorThreshold (6);
+  reg_rgb.setRegionColorThreshold (5);
+  reg_rgb.setMinClusterSize (600);
+
+  std::vector<PointIndices> clusters2;
+  reg_rgb.extract(clusters2);
+
+  PointCloud<PointType>::Ptr colored_cloud = reg.getColoredCloud();
+  PointCloud<PointType>::Ptr colored_cloud2 = reg_rgb.getColoredCloud();
+  visualization::CloudViewer viewer("Cluster viewer");
+  viewer.showCloud(colored_cloud);
+  while (!viewer.wasStopped()) {
+    boost::this_thread::sleep(boost::posix_time::microseconds(100));
   }
 
-  std::cout << std::endl;
-  PointCloud <PointXYZRGB>::Ptr colored_cloud = reg.getColoredCloud ();
-  visualization::CloudViewer viewer ("Cluster viewer");
-  viewer.showCloud(colored_cloud);
-  while (!viewer.wasStopped ())
-  {
+  visualization::CloudViewer viewer2("rgbCluster viewer");
+  viewer2.showCloud(colored_cloud2);
+  while (!viewer2.wasStopped()) {
+    boost::this_thread::sleep(boost::posix_time::microseconds(100));
   }
 
   std::cout << "begin poisson reconstruction" << std::endl;
