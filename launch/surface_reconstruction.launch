@@ -3,13 +3,13 @@
 
  <arg name="sim"             default="false" />
   <arg name="camera"          default="sr300" />
-<!-- 
+
   <group unless="$(arg sim)">
 	  <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch">
 	    <arg name="camera"        value="$(arg camera)"/>
 	    <arg name="publish_tf"    value="true"/>
 	  </include>
-  </group> -->
+  </group>
 
 
   <node pkg="branch_surface" type="surface_reconstruction_service" name="surface_reconstruction_service" output="screen">

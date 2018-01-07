@@ -56,6 +56,14 @@ private:
 
 	bool computeNormals(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
+  bool regionGrowing(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
+
+  bool regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
+
+  bool cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
+
+  bool poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals);
+
 	ros::NodeHandle nodeHandle_;
 
   std::vector<PointCloud<PointType>> cloud_vector_;

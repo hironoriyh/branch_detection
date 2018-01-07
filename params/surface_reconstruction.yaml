@@ -23,6 +23,11 @@ icp_inlier_threshold: 0.7
 min_inlier_ratio_validation: 12
 inlier_dist_validation: 0.0015
 
+setNormalDistanceWeight: 0.11 #0.1
+setDistanceThreshold: 0.03 #0.05
+setRadiusLimits: 0.1
+
+
 grid_res: 200
 use_saved_pc: true
 full_display: true
