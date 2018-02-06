@@ -17,8 +17,17 @@
 #include <pcl/search/kdtree.h>
 
 #include <std_srvs/Empty.h>
+
+// keypoint descriptors
+#include <pcl/keypoints/iss_3d.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/features/fpfh.h>
+#include <pcl/features/board.h>
+
+
+
 using namespace pcl;
-typedef pcl::PointXYZRGB PointType;
+typedef PointXYZRGB PointType;
 
 namespace surface_reconstruction_srv {
 /*!
@@ -26,7 +35,7 @@ namespace surface_reconstruction_srv {
  */
 class SurfaceReconstructionSrv {
 
-//  typedef pcl::PointType PointType;
+//  typedef PointType PointType;
 
 public:
 
@@ -46,7 +55,7 @@ private:
 	bool callGetSurface(std_srvs::EmptyRequest &req, std_srvs::EmptyResponse &resp);
 	void saveCloud(const sensor_msgs::PointCloud2& cloud);
 	std::shared_ptr<visualization::PCLVisualizer> normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals);
-	std::shared_ptr<pcl::visualization::PCLVisualizer> rgbVis (pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud);
+	std::shared_ptr<visualization::PCLVisualizer> rgbVis (PointCloud<PointXYZRGB>::ConstPtr cloud);
 
 private:
 
@@ -64,6 +73,19 @@ private:
 
   bool poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals);
 
+  bool computeKeypoints(const PointCloud<PointType>::ConstPtr &cloud_,
+                        PointCloud<PointType>::Ptr &keypoint_model_ptr_);
+  bool computeFPFHDescriptor(
+      const PointCloud<PointType>::ConstPtr &cloud_,
+      PointCloud<PointType>::Ptr &keypoint_model_ptr_,
+      PointCloud<Normal>::Ptr &normals_,
+      PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_);
+
+  bool computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_,
+                       PointCloud<PointType>::Ptr &keypoint_model_ptr_,
+                       PointCloud<Normal>::Ptr &normals_,
+                       PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__);
+
 	ros::NodeHandle nodeHandle_;
 
   std::vector<PointCloud<PointType>> cloud_vector_;
@@ -73,9 +95,11 @@ private:
 	float leaf_size_;
 	std::string model_folder_;
 
+  // Segmentation
 	double bin_size_;
 	double inlier_dist_segmentation_;
 	double segmentation_inlier_ratio_;
+
 	int max_number_of_instances_;
 	double max_fitness_score_;
 	double inlier_dist_icp_;
@@ -95,11 +119,29 @@ private:
 	double zmin_;
 	double zmax_;
 	bool use_saved_pc_;
+	std::string save_path_;
 
 	int grid_res_;
 	std::vector<double> bound_vec_;
 	std::string point_cloud_topic_;
 
+  //Keypoint Detection Parameters
+  double normal_radius_;
+  double salient_radius_;
+  double border_radius_;
+  double non_max_radius_;
+  double gamma_21_;
+  double gamma_32_;
+  double min_neighbors_;
+  int threads_;
+//  bool use_all_points_;
+
+  // Clustering
+  bool use_hough_;
+  double bin_size_hough_;
+  double threshold_hough_;
+  double bin_size_gc_;
+  double threshold_gc_;
 };
 
 }/* end namespace object_detection_srv */

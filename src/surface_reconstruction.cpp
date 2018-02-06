@@ -50,7 +50,6 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/ModelCoefficients.h>
 
-
 //using namespace point_cloud_filtering;
 
 namespace surface_reconstruction_srv {
@@ -87,6 +86,7 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 	nodeHandle.getParam("/surface_reconstruction_service/zmax", zmax_);
 	nodeHandle.getParam("/surface_reconstruction_service/point_cloud_topic", point_cloud_topic_);
   nodeHandle.getParam("/surface_reconstruction_service/use_saved_pc", use_saved_pc_);
+  nodeHandle.getParam("/surface_reconstruction_service/save_path", save_path_);
 
 
 	bound_vec_.push_back(xmin_);
@@ -135,33 +135,33 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
 //  if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1){
 //    PCL_ERROR("Couldn't read pcd file \n");
 //  }
-
+  std::string path = save_path_ + "/cloud_raw.ply";
+  io::savePLYFile(path, cloud_vector_[0]);
 
 	preprocess(cloud_ptr);
+  path = save_path_ + "/preprocessed.ply";
+  io::savePLYFile(path, *cloud_ptr);
 	DownSample(cloud_ptr);
+  path = save_path_ + "/downsampled.ply";
+  io::savePLYFile(path, *cloud_ptr);
 	computeNormals(cloud_ptr, cloud_normals);
-
-
-  visualization::CloudViewer viewer("cloud viewer");
-  viewer.showCloud(cloud_ptr);
-  while (!viewer.wasStopped()) {
-    boost::this_thread::sleep(boost::posix_time::microseconds(100));
-  }
 
   std::cout << "combine points and normals" << std::endl;
   PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
 	concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
-
-  std::string path = "/home/hyoshdia/Documents/realsense_pcl/cloud.pcd";
-  io::savePCDFileASCII(path, *cloud_ptr);
-  path = "/home/hyoshdia/Documents/realsense_pcl/cloud_raw.ply";
+  path = save_path_ + "/concatinated.ply";
   io::savePLYFile(path, *cloud_ptr);
 
-  PointCloud<PointXYZ>::Ptr new_cloud(new PointCloud<PointXYZ>);
-  copyPointCloud(*cloud_ptr, *new_cloud);
-//  regionGrowing(new_cloud, cloud_normals);
+  // std::string path = "/home/hyoshdia/Documents/realsense_pcl/cloud.pcd";
+  // io::savePCDFileASCII(path, *cloud_ptr);
+  // path = "/home/hyoshdia/Documents/realsense_pcl/cloud_raw.ply";
+  // io::savePLYFile(path, *cloud_ptr);
+
+  // PointCloud<PointXYZ>::Ptr new_cloud(new PointCloud<PointXYZ>);
+  // regionGrowing(new_cloud, cloud_normals);
+  // copyPointCloud(*cloud_ptr, *new_cloud);
 //  regionGrowingRGB(cloud_ptr, cloud_normals);
-  cylinderExtraction(new_cloud, cloud_normals);
+//  cylinderExtraction(new_cloud, cloud_normals);
 
   std::cout << "service done!" << std::endl;
 

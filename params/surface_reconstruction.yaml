@@ -6,12 +6,12 @@ number_of_median_clouds: 3
 z_threshold: 0.02
 planarSegmentationTolerance: 0.01
 min_number_of_inliers: 10000
-xmin: -0.4
-xmax: 0.4
-ymin: -0.4
-ymax: 0.4
-zmin: 0.01
-zmax: 0.7
+xmin: -0.5
+xmax: 0.5
+ymin: -0.5
+ymax: 0.5
+zmin: 0.5
+zmax: 1.5
 
 bin_size: 0.015
 inlier_dist_segmentation: 0.01
@@ -33,4 +33,6 @@ use_saved_pc: true
 full_display: true
 #save_clouds: true
 
-point_cloud_topic: /sr300/depth_registered/points
+# point_cloud_topic: /sr300/depth_registered/points
+point_cloud_topic: /kinect2/hd/points
+save_path: /home/hyoshdia/Documents/kinect2_pcl
