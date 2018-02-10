@@ -55,7 +55,8 @@ private:
 	bool callGetSurface(std_srvs::EmptyRequest &req, std_srvs::EmptyResponse &resp);
 	void saveCloud(const sensor_msgs::PointCloud2& cloud);
 	std::shared_ptr<visualization::PCLVisualizer> normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals);
-	std::shared_ptr<visualization::PCLVisualizer> rgbVis (PointCloud<PointXYZRGB>::ConstPtr cloud);
+	std::shared_ptr<visualization::PCLVisualizer> rgbVis (PointCloud<PointType>::ConstPtr cloud);
+	std::shared_ptr<visualization::PCLVisualizer> xyzVis (PointCloud<PointXYZ>::ConstPtr cloud);
 
 private:
 
@@ -118,7 +119,10 @@ private:
 	double ymax_;
 	double zmin_;
 	double zmax_;
+
 	bool use_saved_pc_;
+	bool compute_keypoints_;
+	bool save_clouds_;
 	std::string save_path_;
 
 	int grid_res_;
