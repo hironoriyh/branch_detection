@@ -50,6 +50,8 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/ModelCoefficients.h>
 
+#include <boost/make_shared.hpp>
+
 //using namespace point_cloud_filtering;
 
 namespace surface_reconstruction_srv {
@@ -360,8 +362,8 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   pass.setFilterLimits(0.0, 1.0);
   pass.filter(*indices);
 
-  pcl::RegionGrowing<PointXYZ, Normal> reg;
-  reg.setMinClusterSize(10000);
+  RegionGrowing<PointXYZ, Normal> reg;
+  reg.setMinClusterSize(1000);
   reg.setMaxClusterSize(1000000);
   reg.setSearchMethod(tree);
   reg.setNumberOfNeighbours(30);
@@ -374,23 +376,70 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   std::vector<PointIndices> clusters;
   reg.extract(clusters);
 
+  // extract points from indices
+  ExtractIndices<PointType> extract;
+  extract.setInputCloud(reg.getColoredCloud());
+  PointIndices::Ptr inliers(&clusters[0]);
+  extract.setIndices(inliers);
+  extract.setNegative(false);
+
   if (clusters.size() > 0) {
-    std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
-    std::cout << "First cluster has " << clusters[0].indices.size() << " points." << endl;
-    std::cout << "These are the indices of the points of the initial" << std::endl
-              << "cloud that belong to the first cluster:" << std::endl;
+
+    PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
+    int j = 0;
+    for (std::vector<PointIndices>::const_iterator it = clusters.begin(); it != clusters.end();
+        ++it) {
+      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
+      for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end();
+          ++pit)
+        cloud_cluster->points.push_back(cloud_filtered->points[*pit]);  //*
+      cloud_cluster->width = cloud_cluster->points.size();
+      cloud_cluster->height = 1;
+      cloud_cluster->is_dense = true;
+
+      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size()
+          << " data points." << std::endl;
+      std::shared_ptr<visualization::PCLVisualizer> viewer;
+      viewer = rgbVis(cloud_cluster);
+      viewer->setWindowName("region growing");
+      while (!viewer->wasStopped()) {
+        viewer->spinOnce(100);
+        boost::this_thread::sleep(boost::posix_time::microseconds(10000));
+      }
+//    std::stringstream ss;
+//    ss << "cloud_cluster_" << j << ".pcd";
+//    writer.write<PointXYZ> (ss.str (), *cloud_cluster, false); //*
+//    j++;
+    }
+  } else {
+    ROS_ERROR("region growing didn't find cluster");
+    return false;
+  }
+
+  if (clusters.size() > 0) {
+//    std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
+//    std::cout << "First cluster has " << clusters[0].indices.size() << " points." << endl;
+//    std::cout << "These are the indices of the points of the initial" << std::endl
+//              << "cloud that belong to the first cluster:" << std::endl;
+//    int counter = 0;
+//    while (counter < clusters[0].indices.size ())
+//    {
+//      std::cout << clusters[0].indices[counter] << ", ";
+//      counter++;
+//      if (counter % 10 == 0)
+//        std::cout << std::endl;
+//    }
+//    std::cout << std::endl;
 
     PointCloud<PointType>::Ptr colored_cloud = reg.getColoredCloud();
     //visualization
     std::shared_ptr<visualization::PCLVisualizer> viewer;
     viewer = rgbVis(colored_cloud);
     viewer->setWindowName("region growing");
-    while (!viewer->wasStopped ())
-    {
-      //      viewer->spinOnce(100);
-      //      boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+    while (!viewer->wasStopped()) {
+      viewer->spinOnce(100);
+      boost::this_thread::sleep(boost::posix_time::microseconds(10000));
     }
-
     return true;
   } else {
     ROS_ERROR("region growing didn't find cluster");
@@ -419,10 +468,24 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   reg_rgb.setPointColorThreshold (6);
   reg_rgb.setRegionColorThreshold (5);
   reg_rgb.setMaxClusterSize(100000);
-  reg_rgb.setMinClusterSize(10000);
+  reg_rgb.setMinClusterSize(3000);
 
-  std::vector<PointIndices> clusters2;
-  reg_rgb.extract(clusters2);
+  std::vector<PointIndices> clusters;
+  reg_rgb.extract(clusters);
+
+  if (clusters.size() > 0) {
+  std::cout << "Number of clusters is equal to " << clusters.size () << std::endl;
+  std::cout << "First cluster has " << clusters[0].indices.size () << " points." << endl;
+  std::cout << "These are the indices of the points of the initial" <<
+    std::endl << "cloud that belong to the first cluster:" << std::endl;
+//  int counter = 0;
+//  while (counter < clusters[0].indices.size ())
+//  {
+//    std::cout << clusters[0].indices[counter] << ", ";
+//    counter++;
+//    if (counter % 10 == 0)
+//      std::cout << std::endl;
+//  }
 
   PointCloud<PointType>::Ptr colored_cloud = reg_rgb.getColoredCloud();
 
@@ -432,10 +495,15 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
    viewer->setWindowName("color region growing");
    while (!viewer->wasStopped ())
    {
-     //      viewer->spinOnce(100);
-     //      boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+           viewer->spinOnce(100);
+           boost::this_thread::sleep(boost::posix_time::microseconds(10000));
    }
   return true;
+  }else {
+    ROS_ERROR("region growing didn't find cluster");
+    return false;
+  }
+
 }
 
 bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_,

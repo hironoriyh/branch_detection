@@ -35,5 +35,5 @@ compute_keypoints: false
 save_clouds: true
 
 # point_cloud_topic: /sr300/depth_registered/points
-point_cloud_topic: /kinect2/hd/points
+point_cloud_topic: /kinect2/qhd/points
 save_path: /home/hyoshdia/Documents/kinect2_pcl
