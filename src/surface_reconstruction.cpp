@@ -63,6 +63,8 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 	nodeHandle.getParam("/surface_reconstruction_service/model_folder", model_folder_);
 
 	nodeHandle.getParam("/surface_reconstruction_service/bin_size", bin_size_);
+  nodeHandle.getParam("/surface_reconstruction_service/bin_size_hough", bin_size_hough_);
+
 	nodeHandle.getParam("/surface_reconstruction_service/inlier_dist_segmentation", inlier_dist_segmentation_);
 	nodeHandle.getParam("/surface_reconstruction_service/segmentation_inlier_ratio", segmentation_inlier_ratio_);
 	nodeHandle.getParam("/surface_reconstruction_service/max_number_of_instances", max_number_of_instances_);
@@ -84,6 +86,7 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 	nodeHandle.getParam("/surface_reconstruction_service/ymax", ymax_);
 	nodeHandle.getParam("/surface_reconstruction_service/zmin", zmin_);
 	nodeHandle.getParam("/surface_reconstruction_service/zmax", zmax_);
+
 	nodeHandle.getParam("/surface_reconstruction_service/point_cloud_topic", point_cloud_topic_);
   nodeHandle.getParam("/surface_reconstruction_service/use_saved_pc", use_saved_pc_);
   nodeHandle.getParam("/surface_reconstruction_service/save_clouds", save_clouds_);
@@ -133,6 +136,7 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
    }
 
 
+
   // if(use_saved_pc_)
   PointCloud<PointType>::Ptr cloud_ptr (new PointCloud<PointType>);
   PointCloud<PointXYZ>::Ptr cloud_ptr_xyz (new PointCloud<PointXYZ>);
@@ -140,19 +144,21 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
   PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
 
   // loadPCD or pcd
-//  std::string file_name ="/home/hyoshdia/Documents/realsense_pcl/cloud_raw.pcd";
-//  if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1){
-//    PCL_ERROR("Couldn't read pcd file \n");
-//  }
-
-  copyPointCloud(cloud_vector_[0], *cloud_ptr_xyz);
-  std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << endl;
-  regionGrowing(cloud_ptr_xyz, cloud_normals);
+  if(use_saved_pc_){
+    std::string file_name =save_path_ + "Raw.pcd";
+    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1){
+      PCL_ERROR("Couldn't read pcd file \n");
+    }
+  }
 
 	preprocess(cloud_ptr);
-	regionGrowingRGB(cloud_ptr, cloud_normals);
+  // region growing
+	copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+  std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+  regionGrowing(cloud_ptr_xyz, cloud_normals);
+  regionGrowingRGB(cloud_ptr, cloud_normals);
 
-	DownSample(cloud_ptr);
+  DownSample(cloud_ptr);
 
 	if(compute_keypoints_){
 	    computeKeypoints(cloud_ptr, keypoint_model_ptr);
@@ -160,15 +166,14 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
 	    io::savePLYFile(path, *keypoint_model_ptr);
 	}
 
-
 	computeNormals(cloud_ptr, cloud_normals);
 
+  //
   std::cout << "combine points and normals" << std::endl;
   PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
 	concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
   path = save_path_ + "/Concatinated_0.ply";
   io::savePLYFile(path, *cloud_ptr);
-
 
   PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
   computeFPFHDescriptor(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
@@ -338,46 +343,63 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
                                              PointCloud<Normal>::Ptr &normals_)
 {
   std::cout << "begin region growing" << std::endl;
-   RegionGrowing<PointXYZ, Normal> reg;
-   reg.setMinClusterSize (1000);
-   reg.setMaxClusterSize (3000000);
-   search::Search<PointXYZ>::Ptr tree (new search::KdTree<PointXYZ>);
-   reg.setSearchMethod (tree);
-   reg.setNumberOfNeighbours (30);
-   reg.setInputCloud (cloud_);
-   //reg.setIndices (indices);
-   reg.setInputNormals (normals_);
-   reg.setSmoothnessThreshold (3.0 / 180.0 * M_PI);
-   reg.setCurvatureThreshold (1.0);
-   std::vector <PointIndices> clusters;
-   reg.extract (clusters);
 
-   if(clusters.size ()>0){
-     std::cout << "Number of clusters is equal to " << clusters.size () << std::endl;
-     std::cout << "First cluster has " << clusters[0].indices.size () << " points." << endl;
-     std::cout << "These are the indices of the points of the initial" <<
-     std::endl << "cloud that belong to the first cluster:" << std::endl;
+  search::Search<PointXYZ>::Ptr tree = boost::shared_ptr<search::Search<PointXYZ> >(
+      new search::KdTree<PointXYZ>);
+  PointCloud<Normal>::Ptr local_normals(new PointCloud<Normal>);
+  NormalEstimation<PointXYZ, Normal> normal_estimator;
+  normal_estimator.setSearchMethod(tree);
+  normal_estimator.setInputCloud(cloud_);
+  normal_estimator.setKSearch(50);
+  normal_estimator.compute(*local_normals);
+
+  IndicesPtr indices(new std::vector<int>);
+  PassThrough<PointXYZ> pass;
+  pass.setInputCloud(cloud_);
+  pass.setFilterFieldName("z");
+  pass.setFilterLimits(0.0, 1.0);
+  pass.filter(*indices);
+
+  pcl::RegionGrowing<PointXYZ, Normal> reg;
+  reg.setMinClusterSize(10000);
+  reg.setMaxClusterSize(1000000);
+  reg.setSearchMethod(tree);
+  reg.setNumberOfNeighbours(30);
+  reg.setInputCloud(cloud_);
+  //reg.setIndices (indices);
+  reg.setInputNormals(local_normals);
+  reg.setSmoothnessThreshold(3.0 / 180.0 * M_PI);
+  reg.setCurvatureThreshold(1.0);
+
+  std::vector<PointIndices> clusters;
+  reg.extract(clusters);
+
+  if (clusters.size() > 0) {
+    std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
+    std::cout << "First cluster has " << clusters[0].indices.size() << " points." << endl;
+    std::cout << "These are the indices of the points of the initial" << std::endl
+              << "cloud that belong to the first cluster:" << std::endl;
 
     PointCloud<PointType>::Ptr colored_cloud = reg.getColoredCloud();
-
     //visualization
-     std::shared_ptr<visualization::PCLVisualizer> viewer;
-     viewer = xyzVis(cloud_);
-     while (!viewer->wasStopped()) {
-       viewer->spinOnce(100);
-       boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+    std::shared_ptr<visualization::PCLVisualizer> viewer;
+    viewer = rgbVis(colored_cloud);
+    viewer->setWindowName("region growing");
+    while (!viewer->wasStopped ())
+    {
+      //      viewer->spinOnce(100);
+      //      boost::this_thread::sleep(boost::posix_time::microseconds(100000));
     }
+
     return true;
-   }
-   else {
-     ROS_ERROR("region growing didn't find cluster");
-     return false;
-   }
-
-
+  } else {
+    ROS_ERROR("region growing didn't find cluster");
+    return false;
+  }
 }
 
-bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_)
+bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_,
+                                                PointCloud<Normal>::Ptr &normals_)
 {
   std::cout << "begin rgb region growing" << std::endl;
 
@@ -397,17 +419,22 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   reg_rgb.setPointColorThreshold (6);
   reg_rgb.setRegionColorThreshold (5);
   reg_rgb.setMaxClusterSize(100000);
-  reg_rgb.setMinClusterSize(3000);
+  reg_rgb.setMinClusterSize(10000);
 
   std::vector<PointIndices> clusters2;
   reg_rgb.extract(clusters2);
 
   PointCloud<PointType>::Ptr colored_cloud = reg_rgb.getColoredCloud();
-  visualization::CloudViewer viewer("rgbCluster viewer");
-  viewer.showCloud(colored_cloud);
-  while (!viewer.wasStopped()) {
-    boost::this_thread::sleep(boost::posix_time::microseconds(100));
-  }
+
+  //visualization
+   std::shared_ptr<visualization::PCLVisualizer> viewer;
+   viewer = rgbVis(colored_cloud);
+   viewer->setWindowName("color region growing");
+   while (!viewer->wasStopped ())
+   {
+     //      viewer->spinOnce(100);
+     //      boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+   }
   return true;
 }
 
@@ -640,7 +667,6 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis (
   visualization::PointCloudColorHandlerRGBField<PointType> rgb(cloud);
   viewer->addPointCloud<PointType> (cloud, rgb, "sample cloud");
   viewer->setPointCloudRenderingProperties (visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
-
   viewer->addCoordinateSystem (0.1);
   viewer->setCameraPosition(0,0, 0.0, 0.0, 0.0, 0.0, 0.1);
   viewer->initCameraParameters ();
