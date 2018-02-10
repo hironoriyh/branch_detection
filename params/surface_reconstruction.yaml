@@ -6,9 +6,9 @@ number_of_median_clouds: 1
 z_threshold: 0.01
 planarSegmentationTolerance: 0.01
 min_number_of_inliers: 30000
-xmin: -0.3
-xmax: 0.3
-ymin: -0.5
+xmin: -0.15
+xmax: 0.15
+ymin: -0.3
 ymax: 0.2
 zmin: 0.3
 zmax: 0.9
@@ -34,6 +34,6 @@ full_display: true
 compute_keypoints: false
 save_clouds: true
 
-# point_cloud_topic: /sr300/depth_registered/points
-point_cloud_topic: /kinect2/qhd/points
-save_path: /home/hyoshdia/Documents/kinect2_pcl
+point_cloud_topic: /sr300/depth_registered/points
+# point_cloud_topic: /kinect2/qhd/points
+save_path: /home/hiro/workspace/ros/src/urdf_models/urdf_models/models/branch_1/pcd/from_branchsurface

@@ -59,6 +59,8 @@ private:
 	std::shared_ptr<visualization::PCLVisualizer> xyzVis (PointCloud<PointXYZ>::ConstPtr cloud);
 
 private:
+	bool planarSegmentation(PointCloud<PointType>::Ptr cloud_ptr_);
+
 
 	bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 

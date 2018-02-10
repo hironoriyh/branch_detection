@@ -146,12 +146,16 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req, std_s
     }
   }
 
+//
   preprocess(cloud_ptr);
+  planarSegmentation(cloud_ptr);
+
+
   // region growing
-  copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
-  std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-  regionGrowing(cloud_ptr_xyz, cloud_normals);
-  regionGrowingRGB(cloud_ptr, cloud_normals);
+  // copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+  // std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+  // regionGrowing(cloud_ptr_xyz, cloud_normals);
+  // regionGrowingRGB(cloud_ptr, cloud_normals);
 
   DownSample(cloud_ptr);
 
@@ -188,6 +192,49 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req, std_s
   std::cout << "service done!" << std::endl;
 
   return true;
+}
+
+bool SurfaceReconstructionSrv::planarSegmentation(PointCloud<PointType>::Ptr cloud_ptr_)
+{
+	// surface segmentation
+	  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+	  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+	  // Create the segmentation object
+	  pcl::SACSegmentation<PointType> seg;
+	  // Optional
+	  seg.setOptimizeCoefficients (true);
+	  // Mandatory
+	  seg.setModelType (pcl::SACMODEL_PLANE);
+	  seg.setMethodType (pcl::SAC_RANSAC);
+//	  seg.setDistanceThreshold(inlier_dist_segmentation_);
+	  seg.setDistanceThreshold(inlier_dist_segmentation_*2);
+
+	  seg.setInputCloud (cloud_ptr_);
+	  seg.segment (*inliers, *coefficients);
+
+	//  ExtractIndices<PointType> extract;
+	//  int i = 0, nr_points = (int) cloud_filtered->points.size ();
+
+	  PointCloud<PointType>::Ptr cloud_filtered_ptr(new PointCloud<PointType>);
+
+	  std::cerr << "Model inliers: " << inliers->indices.size () << std::endl;
+	  for (size_t i = 0; i < inliers->indices.size (); ++i){
+		  cloud_filtered_ptr->points.push_back(cloud_ptr_->points[inliers->indices[i]]);
+	  }
+	//    std::cerr << inliers->indices[i] << "    " << cloud_ptr->points[inliers->indices[i]].x << " "
+	//                                               << cloud_ptr->points[inliers->indices[i]].y << " "
+	//                                               << cloud_ptr->points[inliers->indices[i]].z << std::endl;
+//	  cloud_ptr_ = cloud_filtered_ptr;
+
+	  std::shared_ptr<visualization::PCLVisualizer> viewer;
+	  viewer = rgbVis(cloud_filtered_ptr);
+	  viewer->setWindowName("planar segmentationr: ");
+	  while (!viewer->wasStopped()) {
+	    viewer->spinOnce(100);
+	    boost::this_thread::sleep(boost::posix_time::microseconds(10000));
+	  }
+
+	  return true;
 }
 
 bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
@@ -231,9 +278,9 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
   *cloud_ = *cloud_downsampled;
   std::string path = save_path_ + "/Downsampled_0.ply";
   io::savePLYFile(path, *cloud_downsampled);
-  path = save_path_ + "/Downsampled.pcd";
+  path = save_path_ + "/Keypoints_0.pcd";
   io::savePCDFile(path, *cloud_downsampled);
-  path = save_path_ + "/Preprocessed.pcd";
+  path = save_path_ + "/Preprocessed_0.pcd";
   io::savePCDFile(path, *cloud_downsampled);
   ROS_INFO_STREAM("num of samples after down sample: " << cloud_->size());
   return true;
@@ -352,12 +399,12 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   std::vector<PointIndices> clusters;
   reg.extract(clusters);
 
-  // extract points from indices
-  ExtractIndices<PointType> extract;
-  extract.setInputCloud(reg.getColoredCloud());
-  PointIndices::Ptr inliers(&clusters[0]);
-  extract.setIndices(inliers);
-  extract.setNegative(false);
+//  // extract points from indices
+//  ExtractIndices<PointType> extract;
+//  extract.setInputCloud(reg.getColoredCloud());
+//  PointIndices::Ptr inliers(&clusters[0]);
+//  extract.setIndices(inliers);
+//  extract.setNegative(false);
 
   if (clusters.size() > 0) {
     PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
@@ -370,16 +417,20 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
 //    }
 
     std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
+
     PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
-    for (int j = 0; clusters[0].indices.size(); j++)
-      cloud_cluster->points.push_back(cloud_filtered->points[clusters[0].indices[j]]);
+    for (size_t j = 0; clusters[0].indices.size(); ++j){
+    	cloud_cluster->points.push_back(cloud_filtered->points[clusters[0].indices[j]]);
+    }
+
     cloud_cluster->width = cloud_cluster->points.size();
     cloud_cluster->height = 1;
     cloud_cluster->is_dense = true;
+
     std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
       std::cout << "this cluster has " << clusters[0].indices.size() << " points." << endl;
-//
-//    for (int i = 0; i < clusters.size(); i++) {
+
+      //    for (int i = 0; i < clusters.size(); i++) {
 //      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
 //      for (int j = 0; clusters[i].indices.size(); j++)
 //        cloud_cluster->points.push_back(cloud_filtered->points[clusters[i].indices[j]]);
