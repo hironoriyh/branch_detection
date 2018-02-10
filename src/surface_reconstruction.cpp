@@ -34,7 +34,6 @@
 //#include <pcl/surface/marching_cubes.h>
 #include <pcl/surface/marching_cubes_hoppe.h>
 
-
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/io/vtk_io.h>
 
@@ -61,119 +60,113 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
       bound_vec_()
 {
 
-	nodeHandle.getParam("/surface_reconstruction_service/leaf_size", leaf_size_);
-	nodeHandle.getParam("/surface_reconstruction_service/model_folder", model_folder_);
+  nodeHandle.getParam("/surface_reconstruction_service/leaf_size", leaf_size_);
+  nodeHandle.getParam("/surface_reconstruction_service/model_folder", model_folder_);
 
-	nodeHandle.getParam("/surface_reconstruction_service/bin_size", bin_size_);
+  nodeHandle.getParam("/surface_reconstruction_service/bin_size", bin_size_);
   nodeHandle.getParam("/surface_reconstruction_service/bin_size_hough", bin_size_hough_);
 
-	nodeHandle.getParam("/surface_reconstruction_service/inlier_dist_segmentation", inlier_dist_segmentation_);
-	nodeHandle.getParam("/surface_reconstruction_service/segmentation_inlier_ratio", segmentation_inlier_ratio_);
-	nodeHandle.getParam("/surface_reconstruction_service/max_number_of_instances", max_number_of_instances_);
-	nodeHandle.getParam("/surface_reconstruction_service/max_fitness_score", max_fitness_score_);
-	nodeHandle.getParam("/surface_reconstruction_service/inlier_dist_icp", inlier_dist_icp_);
-	nodeHandle.getParam("/surface_reconstruction_service/icp_inlier_threshold", icp_inlier_threshold_);
-	nodeHandle.getParam("/surface_reconstruction_service/min_inlier_ratio_validation", min_inlier_ratio_validation_);
-	nodeHandle.getParam("/surface_reconstruction_service/inlier_dist_validation", inlier_dist_validation_);
-	nodeHandle.getParam("/surface_reconstruction_service/grid_res", grid_res_);
+  nodeHandle.getParam("/surface_reconstruction_service/inlier_dist_segmentation", inlier_dist_segmentation_);
+  nodeHandle.getParam("/surface_reconstruction_service/segmentation_inlier_ratio", segmentation_inlier_ratio_);
+  nodeHandle.getParam("/surface_reconstruction_service/max_number_of_instances", max_number_of_instances_);
+  nodeHandle.getParam("/surface_reconstruction_service/max_fitness_score", max_fitness_score_);
+  nodeHandle.getParam("/surface_reconstruction_service/inlier_dist_icp", inlier_dist_icp_);
+  nodeHandle.getParam("/surface_reconstruction_service/icp_inlier_threshold", icp_inlier_threshold_);
+  nodeHandle.getParam("/surface_reconstruction_service/min_inlier_ratio_validation", min_inlier_ratio_validation_);
+  nodeHandle.getParam("/surface_reconstruction_service/inlier_dist_validation", inlier_dist_validation_);
+  nodeHandle.getParam("/surface_reconstruction_service/grid_res", grid_res_);
 
-	nodeHandle.getParam("/surface_reconstruction_service/number_of_average_clouds", number_of_average_clouds_);
-	nodeHandle.getParam("/surface_reconstruction_service/number_of_median_clouds", number_of_median_clouds_);
-	nodeHandle.getParam("/surface_reconstruction_service/z_threshold", z_threshold_);
-	nodeHandle.getParam("/surface_reconstruction_service/planarSegmentationTolerance", planarSegmentationTolerance_);
-	nodeHandle.getParam("/surface_reconstruction_service/min_number_of_inliers", min_number_of_inliers_);
-	nodeHandle.getParam("/surface_reconstruction_service/xmin", xmin_);
-	nodeHandle.getParam("/surface_reconstruction_service/xmax", xmax_);
-	nodeHandle.getParam("/surface_reconstruction_service/ymin", ymin_);
-	nodeHandle.getParam("/surface_reconstruction_service/ymax", ymax_);
-	nodeHandle.getParam("/surface_reconstruction_service/zmin", zmin_);
-	nodeHandle.getParam("/surface_reconstruction_service/zmax", zmax_);
+  nodeHandle.getParam("/surface_reconstruction_service/number_of_average_clouds", number_of_average_clouds_);
+  nodeHandle.getParam("/surface_reconstruction_service/number_of_median_clouds", number_of_median_clouds_);
+  nodeHandle.getParam("/surface_reconstruction_service/z_threshold", z_threshold_);
+  nodeHandle.getParam("/surface_reconstruction_service/planarSegmentationTolerance", planarSegmentationTolerance_);
+  nodeHandle.getParam("/surface_reconstruction_service/min_number_of_inliers", min_number_of_inliers_);
+  nodeHandle.getParam("/surface_reconstruction_service/xmin", xmin_);
+  nodeHandle.getParam("/surface_reconstruction_service/xmax", xmax_);
+  nodeHandle.getParam("/surface_reconstruction_service/ymin", ymin_);
+  nodeHandle.getParam("/surface_reconstruction_service/ymax", ymax_);
+  nodeHandle.getParam("/surface_reconstruction_service/zmin", zmin_);
+  nodeHandle.getParam("/surface_reconstruction_service/zmax", zmax_);
 
-	nodeHandle.getParam("/surface_reconstruction_service/point_cloud_topic", point_cloud_topic_);
+  nodeHandle.getParam("/surface_reconstruction_service/point_cloud_topic", point_cloud_topic_);
   nodeHandle.getParam("/surface_reconstruction_service/use_saved_pc", use_saved_pc_);
   nodeHandle.getParam("/surface_reconstruction_service/save_clouds", save_clouds_);
   nodeHandle.getParam("/surface_reconstruction_service/save_path", save_path_);
   nodeHandle.getParam("/surface_reconstruction_service/compute_keypoints", compute_keypoints_);
 
+  bound_vec_.push_back(xmin_);
+  bound_vec_.push_back(xmax_);
+  bound_vec_.push_back(ymin_);
+  bound_vec_.push_back(ymax_);
+  bound_vec_.push_back(zmin_);
+  bound_vec_.push_back(zmax_);
 
-	bound_vec_.push_back(xmin_);
-	bound_vec_.push_back(xmax_);
-	bound_vec_.push_back(ymin_);
-	bound_vec_.push_back(ymax_);
-	bound_vec_.push_back(zmin_);
-	bound_vec_.push_back(zmax_);
+  ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
 
-	ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
-
-	ROS_INFO("Ready to define surface.");
-	ros::spin();
+  ROS_INFO("Ready to define surface.");
+  ros::spin();
 }
 
 SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
 {
 }
 
-bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
-                                              std_srvs::EmptyResponse &resp)
+bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req, std_srvs::EmptyResponse &resp)
 {
 
   std::cout << "service called!" << std::endl;
-   // Sample clouds
-   ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1,
-                                               &SurfaceReconstructionSrv::saveCloud, this);
-   ros::Rate r(60);
-   std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
+  // Sample clouds
+  ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
+  ros::Rate r(60);
+  std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
 
-   while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
- //    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
-     ros::spinOnce();
-     r.sleep();
-   }
-   std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = "
-             << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
-   std::string path;
-   if(save_clouds_){
-     path = save_path_ + "/cloud_raw.ply";
-     io::savePLYFile(path, cloud_vector_[0]);
-   }
-
-
+  while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
+    //    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
+    ros::spinOnce();
+    r.sleep();
+  }
+  std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
+  std::string path;
+  if (save_clouds_) {
+    path = save_path_ + "/cloud_raw.ply";
+    io::savePLYFile(path, cloud_vector_[0]);
+  }
 
   // if(use_saved_pc_)
-  PointCloud<PointType>::Ptr cloud_ptr (new PointCloud<PointType>);
-  PointCloud<PointXYZ>::Ptr cloud_ptr_xyz (new PointCloud<PointXYZ>);
+  PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
+  PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
   PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
   PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
 
   // loadPCD or pcd
-  if(use_saved_pc_){
-    std::string file_name =save_path_ + "Raw.pcd";
-    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1){
+  if (use_saved_pc_) {
+    std::string file_name = save_path_ + "Raw.pcd";
+    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1) {
       PCL_ERROR("Couldn't read pcd file \n");
     }
   }
 
-	preprocess(cloud_ptr);
+  preprocess(cloud_ptr);
   // region growing
-	copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+  copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
   std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
   regionGrowing(cloud_ptr_xyz, cloud_normals);
   regionGrowingRGB(cloud_ptr, cloud_normals);
 
   DownSample(cloud_ptr);
 
-	if(compute_keypoints_){
-	    computeKeypoints(cloud_ptr, keypoint_model_ptr);
-	    path = save_path_ + "/Keypoints.ply";
-	    io::savePLYFile(path, *keypoint_model_ptr);
-	}
+  if (compute_keypoints_) {
+    computeKeypoints(cloud_ptr, keypoint_model_ptr);
+    path = save_path_ + "/Keypoints.ply";
+    io::savePLYFile(path, *keypoint_model_ptr);
+  }
 
-	computeNormals(cloud_ptr, cloud_normals);
+  computeNormals(cloud_ptr, cloud_normals);
 
   //
   std::cout << "combine points and normals" << std::endl;
   PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
-	concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
+  concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
   path = save_path_ + "/Concatinated_0.ply";
   io::savePLYFile(path, *cloud_ptr);
 
@@ -181,7 +174,6 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
   computeFPFHDescriptor(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
   path = save_path_ + "/Signature_0.ply";
   io::savePLYFile(path, *FPFH_signature_scene);
-
 
   PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene(new PointCloud<ReferenceFrame>);
   computeFPFHLRFs(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_LRF_scene);
@@ -198,7 +190,8 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req,
   return true;
 }
 
-bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_) {
+bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
+{
   // DO NOT MODIFY! Parameter recalculation
   std::vector<float> boundaries;
   boundaries.push_back(xmin_);
@@ -224,7 +217,8 @@ bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocesse
   return true;
 }
 
-bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_) {
+bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
+{
   ROS_INFO("Downsampled");
   ROS_INFO_STREAM("num of samples before down sample: " << cloud_->size());
 
@@ -245,9 +239,7 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_) {
   return true;
 }
 
-
-bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::ConstPtr &cloud_,
-                    PointCloud<Normal>::Ptr &normals_)
+bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_)
 {
   ROS_INFO("compute normals");
   NormalEstimation<PointType, Normal> n;
@@ -260,9 +252,7 @@ bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::Const
   return true;
 }
 
-
-bool SurfaceReconstructionSrv::computeKeypoints(const PointCloud<PointType>::ConstPtr &cloud_,
-                      PointCloud<PointType>::Ptr &keypoint_model_ptr_)
+bool SurfaceReconstructionSrv::computeKeypoints(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_)
 {
   ROS_INFO("compute Keypoints");
 
@@ -271,7 +261,7 @@ bool SurfaceReconstructionSrv::computeKeypoints(const PointCloud<PointType>::Con
   search::KdTree<PointType>::Ptr tree(new search::KdTree<PointType>());
 
   iss_detector.setSearchMethod(tree);
-  iss_detector.setSalientRadius(0.02); //
+  iss_detector.setSalientRadius(0.02);  //
   iss_detector.setNonMaxRadius(0.1 * 0.02);
 //  iss_detector.setNormalRadius(0.01); // -> somehow it worked after it's removed!
 //  iss_detector.setBorderRadius(1.1 * 0.02); // -> somehow it worked after it's removed!
@@ -287,21 +277,15 @@ bool SurfaceReconstructionSrv::computeKeypoints(const PointCloud<PointType>::Con
 
   std::cout << "size of the input file points: " << keypoint_model_ptr_->size() << std::endl;
 
-
   return true;
 }
 
-bool SurfaceReconstructionSrv::computeFPFHDescriptor(
-    const PointCloud<PointType>::ConstPtr &cloud_,
-    PointCloud<PointType>::Ptr &keypoint_model_ptr_,
-    PointCloud<Normal>::Ptr &normals_,
-    PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_)
-  {
+bool SurfaceReconstructionSrv::computeFPFHDescriptor(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_,
+                                                     PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_)
+{
   FPFHEstimation<PointType, Normal, FPFHSignature33> fpfh;
-  search::KdTree<PointType>::Ptr search_method(
-      new search::KdTree<PointType>);
-  PointIndicesPtr indices =
-      boost::shared_ptr<PointIndices>(new PointIndices());
+  search::KdTree<PointType>::Ptr search_method(new search::KdTree<PointType>);
+  PointIndicesPtr indices = boost::shared_ptr<PointIndices>(new PointIndices());
 
   // defining indices
   for (int k = 0; k < keypoint_model_ptr_->size(); k++) {
@@ -314,16 +298,14 @@ bool SurfaceReconstructionSrv::computeFPFHDescriptor(
   fpfh.setInputCloud(keypoint_model_ptr_);
   fpfh.setSearchSurface(cloud_);
   fpfh.setInputNormals(normals_);
-  fpfh.setRadiusSearch(0.02); //FPFH_radius_
+  fpfh.setRadiusSearch(0.02);  //FPFH_radius_
   fpfh.compute(*FPFH_signature_scene_);
 
   return true;
 }
 
-bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_,
-                     PointCloud<PointType>::Ptr &keypoint_model_ptr_,
-                     PointCloud<Normal>::Ptr &normals_,
-                     PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__)
+bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_,
+                                               PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__)
 {
   BOARDLocalReferenceFrameEstimation<PointType, Normal, ReferenceFrame> rf_est;
   rf_est.setFindHoles(true);
@@ -337,17 +319,11 @@ bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::Cons
   return true;
 }
 
-
-
-
-
-bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPtr &cloud_,
-                                             PointCloud<Normal>::Ptr &normals_)
+bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_)
 {
   std::cout << "begin region growing" << std::endl;
 
-  search::Search<PointXYZ>::Ptr tree = boost::shared_ptr<search::Search<PointXYZ> >(
-      new search::KdTree<PointXYZ>);
+  search::Search<PointXYZ>::Ptr tree = boost::shared_ptr<search::Search<PointXYZ> >(new search::KdTree<PointXYZ>);
   PointCloud<Normal>::Ptr local_normals(new PointCloud<Normal>);
   NormalEstimation<PointXYZ, Normal> normal_estimator;
   normal_estimator.setSearchMethod(tree);
@@ -384,75 +360,62 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   extract.setNegative(false);
 
   if (clusters.size() > 0) {
-
     PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
-    int j = 0;
-    for (std::vector<PointIndices>::const_iterator it = clusters.begin(); it != clusters.end();
-        ++it) {
-      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
-      for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end();
-          ++pit)
-        cloud_cluster->points.push_back(cloud_filtered->points[*pit]);  //*
-      cloud_cluster->width = cloud_cluster->points.size();
-      cloud_cluster->height = 1;
-      cloud_cluster->is_dense = true;
-
-      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size()
-          << " data points." << std::endl;
-      std::shared_ptr<visualization::PCLVisualizer> viewer;
-      viewer = rgbVis(cloud_cluster);
-      viewer->setWindowName("region growing");
-      while (!viewer->wasStopped()) {
-        viewer->spinOnce(100);
-        boost::this_thread::sleep(boost::posix_time::microseconds(10000));
-      }
-//    std::stringstream ss;
-//    ss << "cloud_cluster_" << j << ".pcd";
-//    writer.write<PointXYZ> (ss.str (), *cloud_cluster, false); //*
-//    j++;
-    }
-  } else {
-    ROS_ERROR("region growing didn't find cluster");
-    return false;
-  }
-
-  if (clusters.size() > 0) {
-//    std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
-//    std::cout << "First cluster has " << clusters[0].indices.size() << " points." << endl;
-//    std::cout << "These are the indices of the points of the initial" << std::endl
-//              << "cloud that belong to the first cluster:" << std::endl;
-//    int counter = 0;
-//    while (counter < clusters[0].indices.size ())
-//    {
-//      std::cout << clusters[0].indices[counter] << ", ";
-//      counter++;
-//      if (counter % 10 == 0)
-//        std::cout << std::endl;
+//    std::shared_ptr<visualization::PCLVisualizer> viewer;
+//    viewer = rgbVis(cloud_filtered);
+//    viewer->setWindowName("region growing cluster: ");
+//    while (!viewer->wasStopped()) {
+//      viewer->spinOnce(100);
+//      boost::this_thread::sleep(boost::posix_time::microseconds(10000));
 //    }
-//    std::cout << std::endl;
 
-    PointCloud<PointType>::Ptr colored_cloud = reg.getColoredCloud();
-    //visualization
-    std::shared_ptr<visualization::PCLVisualizer> viewer;
-    viewer = rgbVis(colored_cloud);
-    viewer->setWindowName("region growing");
-    while (!viewer->wasStopped()) {
-      viewer->spinOnce(100);
-      boost::this_thread::sleep(boost::posix_time::microseconds(10000));
-    }
-    return true;
+    std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
+    PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
+    for (int j = 0; clusters[0].indices.size(); j++)
+      cloud_cluster->points.push_back(cloud_filtered->points[clusters[0].indices[j]]);
+    cloud_cluster->width = cloud_cluster->points.size();
+    cloud_cluster->height = 1;
+    cloud_cluster->is_dense = true;
+    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
+      std::cout << "this cluster has " << clusters[0].indices.size() << " points." << endl;
+//
+//    for (int i = 0; i < clusters.size(); i++) {
+//      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
+//      for (int j = 0; clusters[i].indices.size(); j++)
+//        cloud_cluster->points.push_back(cloud_filtered->points[clusters[i].indices[j]]);
+//
+//      cloud_cluster->width = cloud_cluster->points.size();
+//      cloud_cluster->height = 1;
+//      cloud_cluster->is_dense = true;
+//
+//      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
+//      std::cout << "this cluster has " << clusters[i].indices.size() << " points." << endl;
+//
+////      std::shared_ptr<visualization::PCLVisualizer> viewer;
+////      viewer = rgbVis(cloud_cluster);
+////      viewer->setWindowName("region growing cluster: " + i);
+////      while (!viewer->wasStopped()) {
+////        viewer->spinOnce(100);
+////        boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+////      }
+//
+////    std::stringstream ss;
+////    ss << "cloud_cluster_" << j << ".pcd";
+////    writer.write<PointXYZ> (ss.str (), *cloud_cluster, false); //*
+//    }
+
   } else {
     ROS_ERROR("region growing didn't find cluster");
     return false;
   }
+
 }
 
-bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_,
-                                                PointCloud<Normal>::Ptr &normals_)
+bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_)
 {
   std::cout << "begin rgb region growing" << std::endl;
 
-  IndicesPtr indices (new std::vector <int>);
+  IndicesPtr indices(new std::vector<int>);
   PassThrough<PointType> pass;
   pass.setInputCloud(cloud_);
   pass.setFilterFieldName("z");
@@ -460,13 +423,13 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   pass.filter(*indices);
 
   RegionGrowingRGB<PointType> reg_rgb;
-  reg_rgb.setInputCloud (cloud_);
-  reg_rgb.setIndices (indices);
-  search::Search<PointType>::Ptr tree_rgb (new search::KdTree<PointType>);
-  reg_rgb.setSearchMethod (tree_rgb);
-  reg_rgb.setDistanceThreshold (10);
-  reg_rgb.setPointColorThreshold (6);
-  reg_rgb.setRegionColorThreshold (5);
+  reg_rgb.setInputCloud(cloud_);
+  reg_rgb.setIndices(indices);
+  search::Search<PointType>::Ptr tree_rgb(new search::KdTree<PointType>);
+  reg_rgb.setSearchMethod(tree_rgb);
+  reg_rgb.setDistanceThreshold(10);
+  reg_rgb.setPointColorThreshold(6);
+  reg_rgb.setRegionColorThreshold(5);
   reg_rgb.setMaxClusterSize(100000);
   reg_rgb.setMinClusterSize(3000);
 
@@ -474,40 +437,49 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   reg_rgb.extract(clusters);
 
   if (clusters.size() > 0) {
-  std::cout << "Number of clusters is equal to " << clusters.size () << std::endl;
-  std::cout << "First cluster has " << clusters[0].indices.size () << " points." << endl;
-  std::cout << "These are the indices of the points of the initial" <<
-    std::endl << "cloud that belong to the first cluster:" << std::endl;
-//  int counter = 0;
-//  while (counter < clusters[0].indices.size ())
-//  {
-//    std::cout << clusters[0].indices[counter] << ", ";
-//    counter++;
-//    if (counter % 10 == 0)
-//      std::cout << std::endl;
-//  }
+    PointCloud<PointType>::Ptr cloud_filtered = reg_rgb.getColoredCloud();
+    std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
+    std::shared_ptr<visualization::PCLVisualizer> viewer;
+//    viewer = rgbVis(cloud_filtered);
+//    viewer->setWindowName("region growing cluster: ");
+//    while (!viewer->wasStopped()) {
+//      viewer->spinOnce(100);
+//      boost::this_thread::sleep(boost::posix_time::microseconds(10000));
+//    }
 
-  PointCloud<PointType>::Ptr colored_cloud = reg_rgb.getColoredCloud();
+    for (int i = 0; i < clusters.size(); i++) {
+      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
+      for (int j = 0; clusters[i].indices.size(); j++)
+        cloud_cluster->points.push_back(cloud_filtered->points[clusters[i].indices[j]]);
 
-  //visualization
-   std::shared_ptr<visualization::PCLVisualizer> viewer;
-   viewer = rgbVis(colored_cloud);
-   viewer->setWindowName("color region growing");
-   while (!viewer->wasStopped ())
-   {
-           viewer->spinOnce(100);
-           boost::this_thread::sleep(boost::posix_time::microseconds(10000));
-   }
-  return true;
-  }else {
+      cloud_cluster->width = cloud_cluster->points.size();
+      cloud_cluster->height = 1;
+      cloud_cluster->is_dense = true;
+
+      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
+      std::cout << "this cluster has " << clusters[i].indices.size() << " points." << endl;
+
+//      std::shared_ptr<visualization::PCLVisualizer> viewer;
+//      viewer = rgbVis(cloud_cluster);
+//      viewer->setWindowName("region growing cluster: " + j);
+//      while (!viewer->wasStopped()) {
+//        viewer->spinOnce(100);
+//        boost::this_thread::sleep(boost::posix_time::microseconds(10000));
+//      }
+
+      //    std::stringstream ss;
+      //    ss << "cloud_cluster_" << j << ".pcd";
+      //    writer.write<PointXYZ> (ss.str (), *cloud_cluster, false); //*
+    }
+
+  } else {
     ROS_ERROR("region growing didn't find cluster");
     return false;
   }
 
 }
 
-bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_,
-                                                  PointCloud<Normal>::Ptr &normals_)
+bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_)
 {
   std::cout << "begin cylinder extraction" << std::endl;
 
@@ -529,8 +501,7 @@ bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::Co
   PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
   PointCloud<PointT>::Ptr cloud_filtered2(new PointCloud<PointT>);
   PointCloud<Normal>::Ptr cloud_normals2(new PointCloud<Normal>);
-  ModelCoefficients::Ptr coefficients_plane(new ModelCoefficients), coefficients_cylinder(
-      new ModelCoefficients);
+  ModelCoefficients::Ptr coefficients_plane(new ModelCoefficients), coefficients_cylinder(new ModelCoefficients);
   PointIndices::Ptr inliers_plane(new PointIndices), inliers_cylinder(new PointIndices);
 
 // Build a passthrough filter to remove spurious NaNs
@@ -538,8 +509,7 @@ bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::Co
   pass.setFilterFieldName("z");
   pass.setFilterLimits(0, 1.5);
   pass.filter(*cloud_filtered);
- std::cout << "PointCloud after filtering has: " << cloud_filtered->points.size()
-     << " data points." << std::endl;
+  std::cout << "PointCloud after filtering has: " << cloud_filtered->points.size() << " data points." << std::endl;
 
   // Estimate point normals
   ne.setSearchMethod(tree);
@@ -569,9 +539,8 @@ bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::Co
   // Write the planar inliers to disk
   PointCloud<PointT>::Ptr cloud_plane(new PointCloud<PointT>());
   extract.filter(*cloud_plane);
- std::cout << "PointCloud representing the planar component: " << cloud_plane->points.size()
-     << " data points." << std::endl;
- writer.write("table_scene_mug_stereo_textured_plane.pcd", *cloud_plane, false);
+  std::cout << "PointCloud representing the planar component: " << cloud_plane->points.size() << " data points." << std::endl;
+  writer.write("table_scene_mug_stereo_textured_plane.pcd", *cloud_plane, false);
 
   // Remove the planar inliers, extract the rest
   extract.setNegative(true);
@@ -590,9 +559,7 @@ bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::Co
   nodeHandle_.getParam("/surface_reconstruction_service/setDistanceThreshold", setDistanceThreshold_);
   nodeHandle_.getParam("/surface_reconstruction_service/setRadiusLimits", setRadiusLimits_);
 
- std::cout << "setNormalDistanceWeight_: " << setNormalDistanceWeight_ << "\n"
- << "setDistanceThreshold_: " << setDistanceThreshold_ << "\n"
- << "setRadiusLimits_: " << setRadiusLimits_ << std::endl;
+  std::cout << "setNormalDistanceWeight_: " << setNormalDistanceWeight_ << "\n" << "setDistanceThreshold_: " << setDistanceThreshold_ << "\n" << "setRadiusLimits_: " << setRadiusLimits_ << std::endl;
 
   seg.setOptimizeCoefficients(true);
   seg.setModelType(SACMODEL_CYLINDER);
@@ -604,9 +571,9 @@ bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::Co
   seg.setInputCloud(cloud_filtered2);
   seg.setInputNormals(cloud_normals2);
 
- // Obtain the cylinder inliers and coefficients
- seg.segment(*inliers_cylinder, *coefficients_cylinder);
- std::cout << "Cylinder coefficients: " << *coefficients_cylinder << std::endl;
+  // Obtain the cylinder inliers and coefficients
+  seg.segment(*inliers_cylinder, *coefficients_cylinder);
+  std::cout << "Cylinder coefficients: " << *coefficients_cylinder << std::endl;
 
   // Write the cylinder inliers to disk
   extract.setInputCloud(cloud_filtered2);
@@ -614,13 +581,12 @@ bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::Co
   extract.setNegative(false);
   PointCloud<PointT>::Ptr cloud_cylinder(new PointCloud<PointT>());
   extract.filter(*cloud_cylinder);
- if (cloud_cylinder->points.empty())
-   std::cout << "Can't find the cylindrical component." << std::endl;
- else {
-   std::cout << "PointCloud representing the cylindrical component: "
-       << cloud_cylinder->points.size() << " data points." << std::endl;
-   writer.write("table_scene_mug_stereo_textured_cylinder.pcd", *cloud_cylinder, false);
- }
+  if (cloud_cylinder->points.empty())
+    std::cout << "Can't find the cylindrical component." << std::endl;
+  else {
+    std::cout << "PointCloud representing the cylindrical component: " << cloud_cylinder->points.size() << " data points." << std::endl;
+    writer.write("table_scene_mug_stereo_textured_cylinder.pcd", *cloud_cylinder, false);
+  }
 
   visualization::CloudViewer viewer("Cylinder viewer");
   viewer.showCloud(cloud_cylinder);
@@ -634,93 +600,84 @@ bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::Co
 bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals)
 {
   std::cout << "begin poisson reconstruction" << std::endl;
-   Poisson<PointXYZRGBNormal> poisson;
-   poisson.setDepth(9);
-   poisson.setManifold(0);
-   // poisson.setSmaplesPerNode(1.0);
-   // poisson.setRatioDiameter(1.25);
-   poisson.setDegree(2);
-   poisson.setIsoDivide(8);
-   // poisson.setSolveDivide(8);
-   poisson.setOutputPolygons(0);
-   poisson.setInputCloud(cloud_smoothed_normals);
-   PolygonMesh mesh;
-   poisson.reconstruct(mesh);
-   std::string path = "/home/hyoshdia/Documents/realsense_pcl/poisson.ply";
-   io::savePLYFile(path, mesh);
+  Poisson<PointXYZRGBNormal> poisson;
+  poisson.setDepth(9);
+  poisson.setManifold(0);
+  // poisson.setSmaplesPerNode(1.0);
+  // poisson.setRatioDiameter(1.25);
+  poisson.setDegree(2);
+  poisson.setIsoDivide(8);
+  // poisson.setSolveDivide(8);
+  poisson.setOutputPolygons(0);
+  poisson.setInputCloud(cloud_smoothed_normals);
+  PolygonMesh mesh;
+  poisson.reconstruct(mesh);
+  std::string path = "/home/hyoshdia/Documents/realsense_pcl/poisson.ply";
+  io::savePLYFile(path, mesh);
 
+  //  std::cout << "begin marching cube" << std::endl;
+  //  MarchingCubes<PointNormal> * mc;
+  //  mc = new MarchingCubesHoppe<PointNormal> ();
+  //  float iso_level = 0.0f;
+  //  int hoppe_or_rbf = 0;
+  //  float extend_percentage = 0.0f;
+  //  int grid_res = grid_res_;
+  //  float off_surface_displacement = 0.01f;
+  //  mc->setIsoLevel (iso_level);
+  //  mc->setGridResolution (grid_res, grid_res, grid_res);
+  //  mc->setPercentageExtendGrid (extend_percentage);
+  //  mc->setInputCloud (cloud_smoothed_normals);
+  //  mc->reconstruct(mesh);
+  //  path = "/home/hyoshdia/Documents/realsense_pcl/mc.ply";
+  //  io::savePLYFile(path, mesh);
+  //  delete mc;
 
-   //  std::cout << "begin marching cube" << std::endl;
-   //  MarchingCubes<PointNormal> * mc;
-   //  mc = new MarchingCubesHoppe<PointNormal> ();
-   //  float iso_level = 0.0f;
-   //  int hoppe_or_rbf = 0;
-   //  float extend_percentage = 0.0f;
-   //  int grid_res = grid_res_;
-   //  float off_surface_displacement = 0.01f;
-   //  mc->setIsoLevel (iso_level);
-   //  mc->setGridResolution (grid_res, grid_res, grid_res);
-   //  mc->setPercentageExtendGrid (extend_percentage);
-   //  mc->setInputCloud (cloud_smoothed_normals);
-   //  mc->reconstruct(mesh);
-   //  path = "/home/hyoshdia/Documents/realsense_pcl/mc.ply";
-   //  io::savePLYFile(path, mesh);
-   //  delete mc;
-
-     // Create search tree*
-   //  std::cout << "begin GreedyProjectionTriangulation" << std::endl;
-   //  search::KdTree<PointNormal>::Ptr tree2(new search::KdTree<PointNormal>);
-   //  tree2->setInputCloud(cloud_smoothed_normals);
-   //  // Initialize objects
-   //  GreedyProjectionTriangulation<PointNormal> gp3;
-   //  gp3.setSearchRadius(0.025);   // Set the maximum distance between connected points (maximum edge length)
-   //  gp3.setMu(2.5);   // Set typical values for the parameters
-   //  gp3.setMaximumNearestNeighbors(300);
-   //  gp3.setMaximumSurfaceAngle(M_PI / 4);  // 45 degrees
-   //  gp3.setMinimumAngle(M_PI / 18);  // 10 degrees
-   //  gp3.setMaximumAngle(2 * M_PI / 3);  // 120 degrees
-   //  gp3.setNormalConsistency(false);
-   //
-   //  // Get result
-   //  gp3.setInputCloud(cloud_smoothed_normals);
-   //  gp3.setSearchMethod(tree2);
-   //  gp3.reconstruct(mesh);
-   //  path = "/home/hyoshdia/Documents/realsense_pcl/gp.ply";
-   //  io::savePLYFile(path, mesh);
-   //
-   //  //visualization
-   //  std::shared_ptr<visualization::PCLVisualizer> viewer1;
-   //  std::shared_ptr<visualization::PCLVisualizer> viewer2;
-   //
-   //  viewer1 = normalsVis(cloud_ptr, cloud_normals);
-   //  viewer2 = rgbVis(colored_cloud_ptr);
-   //  while (!viewer1->wasStopped()) {
-   //    viewer1->spinOnce(100);
-   //    viewer2->spinOnce(100);
-   //    boost::this_thread::sleep(boost::posix_time::microseconds(100000));
-   //  }
+  // Create search tree*
+  //  std::cout << "begin GreedyProjectionTriangulation" << std::endl;
+  //  search::KdTree<PointNormal>::Ptr tree2(new search::KdTree<PointNormal>);
+  //  tree2->setInputCloud(cloud_smoothed_normals);
+  //  // Initialize objects
+  //  GreedyProjectionTriangulation<PointNormal> gp3;
+  //  gp3.setSearchRadius(0.025);   // Set the maximum distance between connected points (maximum edge length)
+  //  gp3.setMu(2.5);   // Set typical values for the parameters
+  //  gp3.setMaximumNearestNeighbors(300);
+  //  gp3.setMaximumSurfaceAngle(M_PI / 4);  // 45 degrees
+  //  gp3.setMinimumAngle(M_PI / 18);  // 10 degrees
+  //  gp3.setMaximumAngle(2 * M_PI / 3);  // 120 degrees
+  //  gp3.setNormalConsistency(false);
+  //
+  //  // Get result
+  //  gp3.setInputCloud(cloud_smoothed_normals);
+  //  gp3.setSearchMethod(tree2);
+  //  gp3.reconstruct(mesh);
+  //  path = "/home/hyoshdia/Documents/realsense_pcl/gp.ply";
+  //  io::savePLYFile(path, mesh);
+  //
+  //  //visualization
+  //  std::shared_ptr<visualization::PCLVisualizer> viewer1;
+  //  std::shared_ptr<visualization::PCLVisualizer> viewer2;
+  //
+  //  viewer1 = normalsVis(cloud_ptr, cloud_normals);
+  //  viewer2 = rgbVis(colored_cloud_ptr);
+  //  while (!viewer1->wasStopped()) {
+  //    viewer1->spinOnce(100);
+  //    viewer2->spinOnce(100);
+  //    boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+  //  }
   return true;
 }
 
-
-
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis(
-    PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals)
+std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals)
 {
-  std::shared_ptr<visualization::PCLVisualizer> viewer(
-      new visualization::PCLVisualizer("3D Viewer"));
+  std::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
   viewer->setBackgroundColor(1.0, 1.0, 1.0);
   viewer->addPointCloud<PointType>(cloud, "sample cloud");
-  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 0.0, 0.0, 1.0,
-                                           "sample cloud");
-  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_POINT_SIZE, 2,
-                                           "sample cloud");
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 0.0, 0.0, 1.0, "sample cloud");
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_POINT_SIZE, 2, "sample cloud");
 
   viewer->addPointCloudNormals<PointType, Normal>(cloud, normals, 10, 0.05, "normals");
-  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0,
-                                           "normals");
-  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_LINE_WIDTH, 0.01,
-                                           "normals");
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0, "normals");
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_LINE_WIDTH, 0.01, "normals");
 
   viewer->addCoordinateSystem(0.1);
   viewer->setCameraPosition(0, 0, 0.1, 0.5, 0.0, 0.0, 0.1);
@@ -728,30 +685,30 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsV
   return (viewer);
 }
 
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis (PointCloud<PointType>::ConstPtr cloud)
+std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis(PointCloud<PointType>::ConstPtr cloud)
 {
-  std::shared_ptr<visualization::PCLVisualizer> viewer (new visualization::PCLVisualizer ("3D Viewer"));
-  viewer->setBackgroundColor (1.0, 1.0, 1.0);
+  std::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
+  viewer->setBackgroundColor(1.0, 1.0, 1.0);
   visualization::PointCloudColorHandlerRGBField<PointType> rgb(cloud);
-  viewer->addPointCloud<PointType> (cloud, rgb, "sample cloud");
-  viewer->setPointCloudRenderingProperties (visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
-  viewer->addCoordinateSystem (0.1);
-  viewer->setCameraPosition(0,0, 0.0, 0.0, 0.0, 0.0, 0.1);
-  viewer->initCameraParameters ();
+  viewer->addPointCloud<PointType>(cloud, rgb, "sample cloud");
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+  viewer->addCoordinateSystem(0.1);
+  viewer->setCameraPosition(0, 0, 0.0, 0.0, 0.0, 0.0, 0.1);
+  viewer->initCameraParameters();
   return (viewer);
 }
 
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::xyzVis (PointCloud<PointXYZ>::ConstPtr cloud)
+std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::xyzVis(PointCloud<PointXYZ>::ConstPtr cloud)
 {
-  std::shared_ptr<visualization::PCLVisualizer> viewer (new visualization::PCLVisualizer ("3D Viewer"));
-  viewer->setBackgroundColor (1.0, 1.0, 1.0);
+  std::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
+  viewer->setBackgroundColor(1.0, 1.0, 1.0);
 //  visualization::PointCloudColorHandlerRGBField<PointXYZ> rgb(cloud);
-  viewer->addPointCloud<PointXYZ> (cloud, "sample cloud");
+  viewer->addPointCloud<PointXYZ>(cloud, "sample cloud");
   viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 0.0, 0.0, 1.0, "sample cloud");
-  viewer->setPointCloudRenderingProperties (visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+  viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
   viewer->addCoordinateSystem(0.1, "sample cloud");
-  viewer->setCameraPosition(0,0, 0.0, 0.0, 0.0, 0.0, 0.1);
-  viewer->initCameraParameters ();
+  viewer->setCameraPosition(0, 0, 0.0, 0.0, 0.0, 0.0, 0.1);
+  viewer->initCameraParameters();
   return (viewer);
 }
 
