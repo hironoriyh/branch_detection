@@ -15,11 +15,11 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(PCL REQUIRED)
 
-#add_service_files(
-#  FILES
-#  DetectObject.srv
-#  LocaliseObjects.srv
-#)
+add_service_files(
+  FILES
+  DetectObject.srv
+  LocaliseObjects.srv
+)
 
 generate_messages(
   DEPENDENCIES

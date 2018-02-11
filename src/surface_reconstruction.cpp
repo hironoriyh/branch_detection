@@ -49,7 +49,6 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/ModelCoefficients.h>
 
-#include <boost/make_shared.hpp>
 
 //using namespace point_cloud_filtering;
 
@@ -111,10 +110,14 @@ SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
 {
 }
 
-bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req, std_srvs::EmptyResponse &resp)
+bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, DetectObject::Response &resp)
 {
 
-  std::cout << "service called!" << std::endl;
+  std::string model_name = req.models_to_detect[0].data;
+  std::cout << "service called! " <<  model_name << std::endl;
+  save_path_ = ros::package::getPath("urdf_models") + "/models/" + model_name;
+  std::cout << "save path is updated: " <<  save_path_ << std::endl;
+
   // Sample clouds
   ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
   ros::Rate r(60);
@@ -150,12 +153,11 @@ bool SurfaceReconstructionSrv::callGetSurface(std_srvs::EmptyRequest &req, std_s
   preprocess(cloud_ptr);
   planarSegmentation(cloud_ptr);
 
-
   // region growing
-  // copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
-  // std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-  // regionGrowing(cloud_ptr_xyz, cloud_normals);
-  // regionGrowingRGB(cloud_ptr, cloud_normals);
+   copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+   std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+//   regionGrowing(cloud_ptr_xyz, cloud_normals);
+   regionGrowingRGB(cloud_ptr, cloud_normals);
 
   DownSample(cloud_ptr);
 
@@ -386,7 +388,7 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   pass.filter(*indices);
 
   RegionGrowing<PointXYZ, Normal> reg;
-  reg.setMinClusterSize(1000);
+  reg.setMinClusterSize(500);
   reg.setMaxClusterSize(1000000);
   reg.setSearchMethod(tree);
   reg.setNumberOfNeighbours(30);
@@ -399,61 +401,24 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   std::vector<PointIndices> clusters;
   reg.extract(clusters);
 
-//  // extract points from indices
-//  ExtractIndices<PointType> extract;
-//  extract.setInputCloud(reg.getColoredCloud());
-//  PointIndices::Ptr inliers(&clusters[0]);
-//  extract.setIndices(inliers);
-//  extract.setNegative(false);
-
   if (clusters.size() > 0) {
     PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
-//    std::shared_ptr<visualization::PCLVisualizer> viewer;
-//    viewer = rgbVis(cloud_filtered);
-//    viewer->setWindowName("region growing cluster: ");
-//    while (!viewer->wasStopped()) {
-//      viewer->spinOnce(100);
-//      boost::this_thread::sleep(boost::posix_time::microseconds(10000));
-//    }
-
     std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
 
     PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
     for (size_t j = 0; clusters[0].indices.size(); ++j){
-    	cloud_cluster->points.push_back(cloud_filtered->points[clusters[0].indices[j]]);
+    	int indice = clusters[0].indices[j];
+    	if(indice == 0 || indice > cloud_filtered->width) continue;
+    	else {
+    		cout << "indice is " << indice << endl;
+    		    	cloud_cluster->points.push_back(cloud_filtered->points[indice]);
+    	}
     }
 
     cloud_cluster->width = cloud_cluster->points.size();
     cloud_cluster->height = 1;
     cloud_cluster->is_dense = true;
-
     std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
-      std::cout << "this cluster has " << clusters[0].indices.size() << " points." << endl;
-
-      //    for (int i = 0; i < clusters.size(); i++) {
-//      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
-//      for (int j = 0; clusters[i].indices.size(); j++)
-//        cloud_cluster->points.push_back(cloud_filtered->points[clusters[i].indices[j]]);
-//
-//      cloud_cluster->width = cloud_cluster->points.size();
-//      cloud_cluster->height = 1;
-//      cloud_cluster->is_dense = true;
-//
-//      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
-//      std::cout << "this cluster has " << clusters[i].indices.size() << " points." << endl;
-//
-////      std::shared_ptr<visualization::PCLVisualizer> viewer;
-////      viewer = rgbVis(cloud_cluster);
-////      viewer->setWindowName("region growing cluster: " + i);
-////      while (!viewer->wasStopped()) {
-////        viewer->spinOnce(100);
-////        boost::this_thread::sleep(boost::posix_time::microseconds(100000));
-////      }
-//
-////    std::stringstream ss;
-////    ss << "cloud_cluster_" << j << ".pcd";
-////    writer.write<PointXYZ> (ss.str (), *cloud_cluster, false); //*
-//    }
 
   } else {
     ROS_ERROR("region growing didn't find cluster");
@@ -473,55 +438,38 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   pass.setFilterLimits(0.0, 1.0);
   pass.filter(*indices);
 
-  RegionGrowingRGB<PointType> reg_rgb;
-  reg_rgb.setInputCloud(cloud_);
-  reg_rgb.setIndices(indices);
+  RegionGrowingRGB<PointType> reg;
+  reg.setInputCloud(cloud_);
+  reg.setIndices(indices);
   search::Search<PointType>::Ptr tree_rgb(new search::KdTree<PointType>);
-  reg_rgb.setSearchMethod(tree_rgb);
-  reg_rgb.setDistanceThreshold(10);
-  reg_rgb.setPointColorThreshold(6);
-  reg_rgb.setRegionColorThreshold(5);
-  reg_rgb.setMaxClusterSize(100000);
-  reg_rgb.setMinClusterSize(3000);
+  reg.setSearchMethod(tree_rgb);
+  reg.setDistanceThreshold(10);
+  reg.setPointColorThreshold(6);
+  reg.setRegionColorThreshold(5);
+  reg.setMaxClusterSize(100000);
+  reg.setMinClusterSize(3000);
 
   std::vector<PointIndices> clusters;
-  reg_rgb.extract(clusters);
+  reg.extract(clusters);
 
   if (clusters.size() > 0) {
-    PointCloud<PointType>::Ptr cloud_filtered = reg_rgb.getColoredCloud();
+    PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
     std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
-    std::shared_ptr<visualization::PCLVisualizer> viewer;
-//    viewer = rgbVis(cloud_filtered);
-//    viewer->setWindowName("region growing cluster: ");
-//    while (!viewer->wasStopped()) {
-//      viewer->spinOnce(100);
-//      boost::this_thread::sleep(boost::posix_time::microseconds(10000));
-//    }
 
-    for (int i = 0; i < clusters.size(); i++) {
-      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
-      for (int j = 0; clusters[i].indices.size(); j++)
-        cloud_cluster->points.push_back(cloud_filtered->points[clusters[i].indices[j]]);
-
-      cloud_cluster->width = cloud_cluster->points.size();
-      cloud_cluster->height = 1;
-      cloud_cluster->is_dense = true;
-
-      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
-      std::cout << "this cluster has " << clusters[i].indices.size() << " points." << endl;
-
-//      std::shared_ptr<visualization::PCLVisualizer> viewer;
-//      viewer = rgbVis(cloud_cluster);
-//      viewer->setWindowName("region growing cluster: " + j);
-//      while (!viewer->wasStopped()) {
-//        viewer->spinOnce(100);
-//        boost::this_thread::sleep(boost::posix_time::microseconds(10000));
-//      }
-
-      //    std::stringstream ss;
-      //    ss << "cloud_cluster_" << j << ".pcd";
-      //    writer.write<PointXYZ> (ss.str (), *cloud_cluster, false); //*
+    PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
+    for (size_t j = 0; clusters[0].indices.size(); ++j){
+    	int indice = clusters[0].indices[j];
+    	if(indice == 0 || indice > cloud_filtered->width) continue;
+    	else {
+    		cout << "indice is " << indice << endl;
+    		    	cloud_cluster->points.push_back(cloud_filtered->points[indice]);
+    	}
     }
+
+    cloud_cluster->width = cloud_cluster->points.size();
+    cloud_cluster->height = 1;
+    cloud_cluster->is_dense = true;
+    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
 
   } else {
     ROS_ERROR("region growing didn't find cluster");

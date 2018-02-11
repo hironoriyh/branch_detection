@@ -1,4 +1,4 @@
-leaf_size: 0.002
+deleaf_size: 0.002
 model_folder: ""
 number_of_average_clouds: 1
 number_of_median_clouds: 1
@@ -10,7 +10,7 @@ xmin: -0.15
 xmax: 0.15
 ymin: -0.3
 ymax: 0.2
-zmin: 0.3
+zmin: 0.1
 zmax: 0.9
 
 bin_size: 0.015

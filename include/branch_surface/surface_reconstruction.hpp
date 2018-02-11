@@ -17,6 +17,7 @@
 #include <pcl/search/kdtree.h>
 
 #include <std_srvs/Empty.h>
+//#include <branch_surface/>
 
 // keypoint descriptors
 #include <pcl/keypoints/iss_3d.h>
@@ -24,10 +25,11 @@
 #include <pcl/features/fpfh.h>
 #include <pcl/features/board.h>
 
-
+#include <branch_surface/DetectObject.h>
 
 using namespace pcl;
 typedef PointXYZRGB PointType;
+typedef branch_surface::DetectObject DetectObject;
 
 namespace surface_reconstruction_srv {
 /*!
@@ -52,15 +54,14 @@ public:
 
 private:
 
-	bool callGetSurface(std_srvs::EmptyRequest &req, std_srvs::EmptyResponse &resp);
+	bool callGetSurface(DetectObject::Request &req, DetectObject::Response &resp);
 	void saveCloud(const sensor_msgs::PointCloud2& cloud);
 	std::shared_ptr<visualization::PCLVisualizer> normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals);
-	std::shared_ptr<visualization::PCLVisualizer> rgbVis (PointCloud<PointType>::ConstPtr cloud);
-	std::shared_ptr<visualization::PCLVisualizer> xyzVis (PointCloud<PointXYZ>::ConstPtr cloud);
+	std::shared_ptr<visualization::PCLVisualizer> rgbVis(PointCloud<PointType>::ConstPtr cloud);
+	std::shared_ptr<visualization::PCLVisualizer> xyzVis(PointCloud<PointXYZ>::ConstPtr cloud);
 
 private:
 	bool planarSegmentation(PointCloud<PointType>::Ptr cloud_ptr_);
-
 
 	bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 
@@ -68,37 +69,28 @@ private:
 
 	bool computeNormals(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
-  bool regionGrowing(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
+	bool regionGrowing(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
-  bool regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
+	bool regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
-  bool cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
+	bool cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
-  bool poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals);
+	bool poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals);
 
-  bool computeKeypoints(const PointCloud<PointType>::ConstPtr &cloud_,
-                        PointCloud<PointType>::Ptr &keypoint_model_ptr_);
-  bool computeFPFHDescriptor(
-      const PointCloud<PointType>::ConstPtr &cloud_,
-      PointCloud<PointType>::Ptr &keypoint_model_ptr_,
-      PointCloud<Normal>::Ptr &normals_,
-      PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_);
+	bool computeKeypoints(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_);
+	bool computeFPFHDescriptor(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_, PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_);
 
-  bool computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_,
-                       PointCloud<PointType>::Ptr &keypoint_model_ptr_,
-                       PointCloud<Normal>::Ptr &normals_,
-                       PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__);
+	bool computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_, PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__);
 
 	ros::NodeHandle nodeHandle_;
 
-  std::vector<PointCloud<PointType>> cloud_vector_;
-  search::KdTree<PointType>::Ptr tree_;
-
+	std::vector<PointCloud<PointType>> cloud_vector_;
+	search::KdTree<PointType>::Ptr tree_;
 
 	float leaf_size_;
 	std::string model_folder_;
 
-  // Segmentation
+	// Segmentation
 	double bin_size_;
 	double inlier_dist_segmentation_;
 	double segmentation_inlier_ratio_;
@@ -131,23 +123,23 @@ private:
 	std::vector<double> bound_vec_;
 	std::string point_cloud_topic_;
 
-  //Keypoint Detection Parameters
-  double normal_radius_;
-  double salient_radius_;
-  double border_radius_;
-  double non_max_radius_;
-  double gamma_21_;
-  double gamma_32_;
-  double min_neighbors_;
-  int threads_;
+	//Keypoint Detection Parameters
+	double normal_radius_;
+	double salient_radius_;
+	double border_radius_;
+	double non_max_radius_;
+	double gamma_21_;
+	double gamma_32_;
+	double min_neighbors_;
+	int threads_;
 //  bool use_all_points_;
 
-  // Clustering
-  bool use_hough_;
-  double bin_size_hough_;
-  double threshold_hough_;
-  double bin_size_gc_;
-  double threshold_gc_;
+// Clustering
+	bool use_hough_;
+	double bin_size_hough_;
+	double threshold_hough_;
+	double bin_size_gc_;
+	double threshold_gc_;
 };
 
 }/* end namespace object_detection_srv */
