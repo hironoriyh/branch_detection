@@ -150,14 +150,14 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   }
 
 //
+//  planarSegmentation(cloud_ptr);
   preprocess(cloud_ptr);
-  planarSegmentation(cloud_ptr);
 
   // region growing
    copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
    std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
 //   regionGrowing(cloud_ptr_xyz, cloud_normals);
-   regionGrowingRGB(cloud_ptr, cloud_normals);
+   // regionGrowingRGB(cloud_ptr, cloud_normals);
 
   DownSample(cloud_ptr);
 
@@ -223,17 +223,15 @@ bool SurfaceReconstructionSrv::planarSegmentation(PointCloud<PointType>::Ptr clo
 	  for (size_t i = 0; i < inliers->indices.size (); ++i){
 		  cloud_filtered_ptr->points.push_back(cloud_ptr_->points[inliers->indices[i]]);
 	  }
-	//    std::cerr << inliers->indices[i] << "    " << cloud_ptr->points[inliers->indices[i]].x << " "
-	//                                               << cloud_ptr->points[inliers->indices[i]].y << " "
-	//                                               << cloud_ptr->points[inliers->indices[i]].z << std::endl;
-//	  cloud_ptr_ = cloud_filtered_ptr;
 
 	  std::shared_ptr<visualization::PCLVisualizer> viewer;
 	  viewer = rgbVis(cloud_filtered_ptr);
 	  viewer->setWindowName("planar segmentationr: ");
-	  while (!viewer->wasStopped()) {
+	  int count =0;
+	  while (count < 1000) {
+	    ++count;
 	    viewer->spinOnce(100);
-	    boost::this_thread::sleep(boost::posix_time::microseconds(10000));
+	    boost::this_thread::sleep(boost::posix_time::microseconds(1000));
 	  }
 
 	  return true;
@@ -260,8 +258,8 @@ bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocesse
   filtering.setMinNumberOfInliers(min_number_of_inliers_);
   filtering.compute(preprocessed_cloud_ptr_);
   unsigned int preprocessed_size_ = preprocessed_cloud_ptr_->size();
-  std::string path = save_path_ + "/Preprocessed_0.ply";
-  io::savePLYFile(path, *preprocessed_cloud_ptr_);
+//  std::string path = save_path_ + "/Preprocessed_0.ply";
+//  io::savePLYFile(path, *preprocessed_cloud_ptr_);
   std::cout << "object detection, preprocess() " << preprocessed_size_ << std::endl;
   return true;
 }
