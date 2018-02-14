@@ -163,7 +163,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   if (compute_keypoints_) {
     computeKeypoints(cloud_ptr, keypoint_model_ptr);
-    path = save_path_ + "/Keypoints.ply";
+    path = save_path_ + "/Keypoints_0.ply";
     io::savePLYFile(path, *keypoint_model_ptr);
   }
 
