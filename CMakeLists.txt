@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   sensor_msgs
   message_generation
+  tf
+  tf_conversions
 )
 
 find_package(PCL REQUIRED)
@@ -38,6 +40,8 @@ catkin_package(
   	rospy sensor_msgs
   	std_msgs
   	message_runtime
+    tf
+    tf_conversions
   DEPENDS system_lib
 )
 
@@ -50,12 +54,12 @@ include_directories(
 
 ## Declare a C++ library
 # SurfaceReconstruction Service
- add_executable(
+add_executable(
 	surface_reconstruction_service
 			src/surface_reconstruction_service_node.cpp
 			src/filtering.cpp
 			src/surface_reconstruction.cpp
 	)
-	add_dependencies(surface_reconstruction_service 
-	object_detection_gencpp)
-	target_link_libraries(surface_reconstruction_service ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+	
+add_dependencies(surface_reconstruction_service object_detection_gencpp)
+target_link_libraries(surface_reconstruction_service ${catkin_LIBRARIES} ${PCL_LIBRARIES})

@@ -55,8 +55,7 @@
 namespace surface_reconstruction_srv {
 
 SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
-    : nodeHandle_(nodeHandle),
-      bound_vec_()
+    : nodeHandle_(nodeHandle)
 {
 
   nodeHandle.getParam("/surface_reconstruction_service/leaf_size", leaf_size_);
@@ -93,6 +92,10 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   nodeHandle.getParam("/surface_reconstruction_service/save_path", save_path_);
   nodeHandle.getParam("/surface_reconstruction_service/compute_keypoints", compute_keypoints_);
 
+  nodeHandle.getParam("/surface_reconstruction_service/world_frame", world_frame_);
+  nodeHandle.getParam("/surface_reconstruction_service/camera_frame", camera_frame_);
+
+
   bound_vec_.push_back(xmin_);
   bound_vec_.push_back(xmax_);
   bound_vec_.push_back(ymin_);
@@ -101,9 +104,8 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   bound_vec_.push_back(zmax_);
 
   ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
-
-  ROS_INFO("Ready to define surface.");
-  ros::spin();
+//  ROS_INFO("Ready to define surface.");
+//  ros::spin();
 }
 
 SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
@@ -130,10 +132,34 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   }
   std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
   std::string path;
+
   if (save_clouds_) {
     path = save_path_ + "/cloud_raw.ply";
     io::savePLYFile(path, cloud_vector_[0]);
   }
+
+  // Model pose in camera frame.
+   const ros::Time time = ros::Time::now();
+   geometry_msgs::PoseStamped object_pose;
+
+   geometry_msgs::PoseStamped model_camera_pose;
+//   camera_frame_ = "head_rgbd_sensor_rgb_frame";
+   model_camera_pose.header.frame_id = camera_frame_;
+   model_camera_pose.header.stamp = time;
+   model_camera_pose.pose =
+
+   try {
+     const ros::Duration timeout(1);
+     const ros::Duration polling_sleep_duration(4);
+     std::string* error_msg = NULL;
+
+     tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
+     tf_listener_.transformPose(world_frame_, model_camera_pose, object_pose);
+
+   } catch (tf2::TransformException &ex) {
+     ROS_WARN("%s", ex.what());
+     ros::Duration(1.0).sleep();
+   }
 
   // if(use_saved_pc_)
   PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
@@ -143,29 +169,31 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   // loadPCD or pcd
   if (use_saved_pc_) {
-    std::string file_name = save_path_ + "Raw.pcd";
+    std::string file_name = save_path_ + "Preprocessed_0.pcd";
     if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1) {
       PCL_ERROR("Couldn't read pcd file \n");
     }
+
+  } else
+  {
+    //  planarSegmentation(cloud_ptr);
+      preprocess(cloud_ptr);
+
+      // region growing
+       copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+       std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+    //   regionGrowing(cloud_ptr_xyz, cloud_normals);
+       // regionGrowingRGB(cloud_ptr, cloud_normals);
+
+      DownSample(cloud_ptr);
   }
 
-//
-//  planarSegmentation(cloud_ptr);
-  preprocess(cloud_ptr);
 
-  // region growing
-   copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
-   std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-//   regionGrowing(cloud_ptr_xyz, cloud_normals);
-   // regionGrowingRGB(cloud_ptr, cloud_normals);
-
-  DownSample(cloud_ptr);
-
-  if (compute_keypoints_) {
-    computeKeypoints(cloud_ptr, keypoint_model_ptr);
-    path = save_path_ + "/Keypoints_0.ply";
-    io::savePLYFile(path, *keypoint_model_ptr);
-  }
+//  if (compute_keypoints_) {
+//    computeKeypoints(cloud_ptr, keypoint_model_ptr);
+//    path = save_path_ + "/Keypoints_0.ply";
+//    io::savePLYFile(path, *keypoint_model_ptr);
+//  }
 
   computeNormals(cloud_ptr, cloud_normals);
 
@@ -275,14 +303,20 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
   sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
   sor.filter(*cloud_downsampled);
 
-  *cloud_ = *cloud_downsampled;
+  Eigen::Affine3f transform(Eigen::Translation3f(0, 0, -0.8));
+  Eigen::Matrix4f transform_1 = transform.matrix();
+  PointCloud<PointType>::Ptr could_transformed (new PointCloud<PointType>());
+  pcl::transformPointCloud( *cloud_downsampled, *could_transformed, transform_1);
+  *cloud_ = *could_transformed;
+
+
   std::string path = save_path_ + "/Downsampled_0.ply";
-  io::savePLYFile(path, *cloud_downsampled);
+  io::savePLYFile(path, *could_transformed);
   path = save_path_ + "/Keypoints_0.pcd";
-  io::savePCDFile(path, *cloud_downsampled);
+  io::savePCDFile(path, *could_transformed);
   path = save_path_ + "/Preprocessed_0.pcd";
-  io::savePCDFile(path, *cloud_downsampled);
-  ROS_INFO_STREAM("num of samples after down sample: " << cloud_->size());
+  io::savePCDFile(path, *could_transformed);
+  ROS_INFO_STREAM("num of samples after down sample: " << could_transformed->size());
   return true;
 }
 

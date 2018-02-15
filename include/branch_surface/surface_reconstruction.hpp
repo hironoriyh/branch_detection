@@ -25,6 +25,10 @@
 #include <pcl/features/fpfh.h>
 #include <pcl/features/board.h>
 
+#include <geometry_msgs/PoseStamped.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf/transform_listener.h>
+
 #include <branch_surface/DetectObject.h>
 
 using namespace pcl;
@@ -118,6 +122,10 @@ private:
 	bool compute_keypoints_;
 	bool save_clouds_;
 	std::string save_path_;
+
+  tf::TransformListener tf_listener_;
+  std::string world_frame_;
+  std::string camera_frame_;
 
 	int grid_res_;
 	std::vector<double> bound_vec_;

@@ -34,6 +34,7 @@ full_display: true
 compute_keypoints: false
 save_clouds: true
 
+camera_frame: camera_link
 # point_cloud_topic: /sr300/depth_registered/points
 point_cloud_topic: /kinect2/sd/points
 # save_path: /home/hiro/workspace/ros/src/urdf_models/urdf_models/models/branch_1/pcd/from_branchsurface
