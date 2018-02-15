@@ -49,6 +49,8 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/ModelCoefficients.h>
 
+#include <pcl/common/centroid.h>
+
 
 //using namespace point_cloud_filtering;
 
@@ -161,7 +163,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
        copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
        std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
     //   regionGrowing(cloud_ptr_xyz, cloud_normals);
-       // regionGrowingRGB(cloud_ptr, cloud_normals);
+//        regionGrowingRGB(cloud_ptr, cloud_normals);
 
       DownSample(cloud_ptr);
   }
@@ -192,10 +194,23 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   path = save_path_ + "/LRFs_0.ply";
   io::savePLYFile(path, *FPFH_LRF_scene);
 
-  // std::string path = "/home/hyoshdia/Documents/realsense_pcl/cloud.pcd";
-  // io::savePCDFileASCII(path, *cloud_ptr);
-  // path = "/home/hyoshdia/Documents/realsense_pcl/cloud_raw.ply";
-  // io::savePLYFile(path, *cloud_ptr);
+  Eigen::Vector4f centroid;
+//  Eigen::Matrix4f centroid;
+  compute3DCentroid(*cloud_ptr, centroid);
+  std::cout << "centorid is : " << centroid[0] << " , " <<
+      centroid[1] << " , "  << centroid[2] << std::endl;
+  centroid *= -1;
+
+  Eigen::Matrix4f transform_1 = Eigen::Matrix4f::Identity();
+  transform_1 (0,3)  = centroid[0];
+  transform_1 (1,3)  = centroid[1];
+  transform_1 (2,3)  = centroid[2];
+
+  PointCloud<PointType>::Ptr could_transformed (new PointCloud<PointType>());
+  transformPointCloud( *cloud_ptr, *could_transformed, transform_1);
+  path = save_path_ + "/reoriented.ply";
+  io::savePLYFile(path, *could_transformed);
+
 
   std::cout << "service done!" << std::endl;
 
@@ -281,20 +296,14 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
   sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
   sor.filter(*cloud_downsampled);
 
-  Eigen::Affine3f transform(Eigen::Translation3f(0, 0, -0.8));
-  Eigen::Matrix4f transform_1 = transform.matrix();
-  PointCloud<PointType>::Ptr could_transformed (new PointCloud<PointType>());
-  pcl::transformPointCloud( *cloud_downsampled, *could_transformed, transform_1);
-  *cloud_ = *could_transformed;
-
 
   std::string path = save_path_ + "/Downsampled_0.ply";
-  io::savePLYFile(path, *could_transformed);
+  io::savePLYFile(path, *cloud_downsampled);
   path = save_path_ + "/Keypoints_0.pcd";
-  io::savePCDFile(path, *could_transformed);
+  io::savePCDFile(path, *cloud_downsampled);
   path = save_path_ + "/Preprocessed_0.pcd";
-  io::savePCDFile(path, *could_transformed);
-  ROS_INFO_STREAM("num of samples after down sample: " << could_transformed->size());
+  io::savePCDFile(path, *cloud_downsampled);
+  ROS_INFO_STREAM("num of samples after down sample: " << cloud_downsampled->size());
   return true;
 }
 
@@ -455,11 +464,11 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   reg.setIndices(indices);
   search::Search<PointType>::Ptr tree_rgb(new search::KdTree<PointType>);
   reg.setSearchMethod(tree_rgb);
-  reg.setDistanceThreshold(10);
+  reg.setDistanceThreshold(5);
   reg.setPointColorThreshold(6);
-  reg.setRegionColorThreshold(5);
+  reg.setRegionColorThreshold(3);
   reg.setMaxClusterSize(100000);
-  reg.setMinClusterSize(3000);
+  reg.setMinClusterSize(1000);
 
   std::vector<PointIndices> clusters;
   reg.extract(clusters);
@@ -482,7 +491,7 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
     cloud_cluster->height = 1;
     cloud_cluster->is_dense = true;
     std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
-
+    return true;
   } else {
     ROS_ERROR("region growing didn't find cluster");
     return false;
