@@ -104,8 +104,8 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   bound_vec_.push_back(zmax_);
 
   ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
-//  ROS_INFO("Ready to define surface.");
-//  ros::spin();
+  ROS_INFO("Ready to define surface.");
+  ros::spin();
 }
 
 SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
@@ -138,28 +138,6 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
     io::savePLYFile(path, cloud_vector_[0]);
   }
 
-  // Model pose in camera frame.
-   const ros::Time time = ros::Time::now();
-   geometry_msgs::PoseStamped object_pose;
-
-   geometry_msgs::PoseStamped model_camera_pose;
-//   camera_frame_ = "head_rgbd_sensor_rgb_frame";
-   model_camera_pose.header.frame_id = camera_frame_;
-   model_camera_pose.header.stamp = time;
-   model_camera_pose.pose =
-
-   try {
-     const ros::Duration timeout(1);
-     const ros::Duration polling_sleep_duration(4);
-     std::string* error_msg = NULL;
-
-     tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
-     tf_listener_.transformPose(world_frame_, model_camera_pose, object_pose);
-
-   } catch (tf2::TransformException &ex) {
-     ROS_WARN("%s", ex.what());
-     ros::Duration(1.0).sleep();
-   }
 
   // if(use_saved_pc_)
   PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
@@ -469,6 +447,8 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   pass.setFilterFieldName("z");
   pass.setFilterLimits(0.0, 1.0);
   pass.filter(*indices);
+  pass.setFilterLimits(0.0, 1.0);
+  pass.filter(*indices);
 
   RegionGrowingRGB<PointType> reg;
   reg.setInputCloud(cloud_);
@@ -510,123 +490,6 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
 
 }
 
-bool SurfaceReconstructionSrv::cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_)
-{
-  std::cout << "begin cylinder extraction" << std::endl;
-
-  typedef PointXYZ PointT;
-
-  // All the objects needed
-  PCDReader reader;
-  PassThrough<PointT> pass;
-  NormalEstimation<PointT, Normal> ne;
-  SACSegmentationFromNormals<PointT, Normal> seg;
-  PCDWriter writer;
-  ExtractIndices<PointT> extract;
-  ExtractIndices<Normal> extract_normals;
-  search::KdTree<PointT>::Ptr tree(new search::KdTree<PointT>());
-
-  // Datasets
-//    PointCloud<PointT>::Ptr cloud (new PointCloud<PointT>);
-  PointCloud<PointT>::Ptr cloud_filtered(new PointCloud<PointT>);
-  PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
-  PointCloud<PointT>::Ptr cloud_filtered2(new PointCloud<PointT>);
-  PointCloud<Normal>::Ptr cloud_normals2(new PointCloud<Normal>);
-  ModelCoefficients::Ptr coefficients_plane(new ModelCoefficients), coefficients_cylinder(new ModelCoefficients);
-  PointIndices::Ptr inliers_plane(new PointIndices), inliers_cylinder(new PointIndices);
-
-// Build a passthrough filter to remove spurious NaNs
-  pass.setInputCloud(cloud_);
-  pass.setFilterFieldName("z");
-  pass.setFilterLimits(0, 1.5);
-  pass.filter(*cloud_filtered);
-  std::cout << "PointCloud after filtering has: " << cloud_filtered->points.size() << " data points." << std::endl;
-
-  // Estimate point normals
-  ne.setSearchMethod(tree);
-  ne.setInputCloud(cloud_filtered);
-  ne.setKSearch(50);
-  ne.compute(*cloud_normals);
-
-  // Create the segmentation object for the planar model and set all the parameters
-  seg.setOptimizeCoefficients(true);
-  seg.setModelType(SACMODEL_NORMAL_PLANE);
-  seg.setNormalDistanceWeight(0.1);
-  seg.setMethodType(SAC_RANSAC);
-  seg.setMaxIterations(100);
-  seg.setDistanceThreshold(0.03);
-  seg.setInputCloud(cloud_filtered);
-  seg.setInputNormals(cloud_normals);
-  // Obtain the plane inliers and coefficients
-  seg.segment(*inliers_plane, *coefficients_plane);
-
-  std::cout << "Plane coefficients: " << *coefficients_plane << std::endl;
-
-  // Extract the planar inliers from the input cloud
-  extract.setInputCloud(cloud_filtered);
-  extract.setIndices(inliers_plane);
-  extract.setNegative(false);
-
-  // Write the planar inliers to disk
-  PointCloud<PointT>::Ptr cloud_plane(new PointCloud<PointT>());
-  extract.filter(*cloud_plane);
-  std::cout << "PointCloud representing the planar component: " << cloud_plane->points.size() << " data points." << std::endl;
-  writer.write("table_scene_mug_stereo_textured_plane.pcd", *cloud_plane, false);
-
-  // Remove the planar inliers, extract the rest
-  extract.setNegative(true);
-  extract.filter(*cloud_filtered2);
-  extract_normals.setNegative(true);
-  extract_normals.setInputCloud(cloud_normals);
-  extract_normals.setIndices(inliers_plane);
-  extract_normals.filter(*cloud_normals2);
-
-  // Create the segmentation object for cylinder segmentation and set all the parameters
-  float setNormalDistanceWeight_;
-  float setDistanceThreshold_;
-  float setRadiusLimits_;
-
-  nodeHandle_.getParam("/surface_reconstruction_service/setNormalDistanceWeight", setNormalDistanceWeight_);
-  nodeHandle_.getParam("/surface_reconstruction_service/setDistanceThreshold", setDistanceThreshold_);
-  nodeHandle_.getParam("/surface_reconstruction_service/setRadiusLimits", setRadiusLimits_);
-
-  std::cout << "setNormalDistanceWeight_: " << setNormalDistanceWeight_ << "\n" << "setDistanceThreshold_: " << setDistanceThreshold_ << "\n" << "setRadiusLimits_: " << setRadiusLimits_ << std::endl;
-
-  seg.setOptimizeCoefficients(true);
-  seg.setModelType(SACMODEL_CYLINDER);
-  seg.setMethodType(SAC_RANSAC);
-  seg.setNormalDistanceWeight(setNormalDistanceWeight_);
-  seg.setMaxIterations(10000);
-  seg.setDistanceThreshold(setDistanceThreshold_);
-  seg.setRadiusLimits(0, setRadiusLimits_);
-  seg.setInputCloud(cloud_filtered2);
-  seg.setInputNormals(cloud_normals2);
-
-  // Obtain the cylinder inliers and coefficients
-  seg.segment(*inliers_cylinder, *coefficients_cylinder);
-  std::cout << "Cylinder coefficients: " << *coefficients_cylinder << std::endl;
-
-  // Write the cylinder inliers to disk
-  extract.setInputCloud(cloud_filtered2);
-  extract.setIndices(inliers_cylinder);
-  extract.setNegative(false);
-  PointCloud<PointT>::Ptr cloud_cylinder(new PointCloud<PointT>());
-  extract.filter(*cloud_cylinder);
-  if (cloud_cylinder->points.empty())
-    std::cout << "Can't find the cylindrical component." << std::endl;
-  else {
-    std::cout << "PointCloud representing the cylindrical component: " << cloud_cylinder->points.size() << " data points." << std::endl;
-    writer.write("table_scene_mug_stereo_textured_cylinder.pcd", *cloud_cylinder, false);
-  }
-
-  visualization::CloudViewer viewer("Cylinder viewer");
-  viewer.showCloud(cloud_cylinder);
-  while (!viewer.wasStopped()) {
-    boost::this_thread::sleep(boost::posix_time::microseconds(100));
-  }
-
-  return true;
-}
 
 bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals)
 {
@@ -746,7 +609,8 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::xyzVis(P
 void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 {
   std::cout << "the length of cloud sensor msg is " << cloud.data[100] << std::endl;
-
+  std::cout << "cloud frame" << cloud.header.frame_id << std::endl;
+//  cloud.header.frame_id = world_frame_;
   PointCloud<PointType> new_cloud;
   fromROSMsg(cloud, new_cloud);
   cloud_vector_.push_back(new_cloud);

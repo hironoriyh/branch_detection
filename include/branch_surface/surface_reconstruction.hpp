@@ -77,11 +77,10 @@ private:
 
 	bool regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
-	bool cylinderExtraction(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
-
 	bool poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals);
 
 	bool computeKeypoints(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_);
+
 	bool computeFPFHDescriptor(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_, PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_);
 
 	bool computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_, PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__);
@@ -132,22 +131,22 @@ private:
 	std::string point_cloud_topic_;
 
 	//Keypoint Detection Parameters
-	double normal_radius_;
-	double salient_radius_;
-	double border_radius_;
-	double non_max_radius_;
-	double gamma_21_;
-	double gamma_32_;
-	double min_neighbors_;
-	int threads_;
+//	double normal_radius_;
+//	double salient_radius_;
+//	double border_radius_;
+//	double non_max_radius_;
+//	double gamma_21_;
+//	double gamma_32_;
+//	double min_neighbors_;
+//	int threads_;
 //  bool use_all_points_;
 
 // Clustering
-	bool use_hough_;
+//	bool use_hough_;
 	double bin_size_hough_;
-	double threshold_hough_;
-	double bin_size_gc_;
-	double threshold_gc_;
+//	double threshold_hough_;
+//	double bin_size_gc_;
+//	double threshold_gc_;
 };
 
 }/* end namespace object_detection_srv */

@@ -1,16 +1,16 @@
-leaf_size: 0.001
+leaf_size: 0.0025
 model_folder: ""
 number_of_average_clouds: 1
 number_of_median_clouds: 1
 z_threshold: 0.01
-planarSegmentationTolerance: 0.01
-min_number_of_inliers: 10000
+planarSegmentationTolerance: 0.02
+min_number_of_inliers: 15000
 xmin: -0.3
 xmax: 0.3
 ymin: -0.3
 ymax: 0.3
-zmin: 0.5
-zmax: 0.9
+zmin: 0.6
+zmax: 1.5
 
 
 bin_size: 0.015
