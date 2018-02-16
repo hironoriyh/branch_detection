@@ -71,8 +71,6 @@ private:
 
 	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_);
 
-	bool planarSegmentation(PointCloud<PointType>::Ptr cloud_ptr_);
-
 	bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 
 	bool DownSample(PointCloud<PointType>::Ptr &cloud_);

@@ -166,30 +166,27 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
   PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
   PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
-  PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
+//  PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
+  PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
+  PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene(new PointCloud<ReferenceFrame>);
 
   // loadPCD or pcd
   if (use_saved_pc_) {
     std::string file_name = save_path_ + "Preprocessed_0.pcd";
-    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1) {
-      PCL_ERROR("Couldn't read pcd file \n");
-    }
-
-  } else
+    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)  PCL_ERROR("Couldn't read pcd file \n");
+  }
+  else
   {
-    //  planarSegmentation(cloud_ptr);
       preprocess(cloud_ptr);
-
       // region growing
-       copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
-       std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+//       copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+//       std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
     //   regionGrowing(cloud_ptr_xyz, cloud_normals);
 //        regionGrowingRGB(cloud_ptr, cloud_normals);
-
       DownSample(cloud_ptr);
   }
 
-
+  // keypoints are not working with matching...
 //  if (compute_keypoints_) {
 //    computeKeypoints(cloud_ptr, keypoint_model_ptr);
 //    path = save_path_ + "/Keypoints_0.ply";
@@ -198,15 +195,9 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   computeNormals(cloud_ptr, cloud_normals);
 
-  PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
   computeFPFHDescriptor(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
-  path = save_path_ + "/Signature_0.ply";
-  io::savePLYFile(path, *FPFH_signature_scene);
 
-  PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene(new PointCloud<ReferenceFrame>);
   computeFPFHLRFs(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_LRF_scene);
-  path = save_path_ + "/LRFs_0.ply";
-  io::savePLYFile(path, *FPFH_LRF_scene);
 
   reorientModel(cloud_ptr, cloud_normals);
 
@@ -260,47 +251,6 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
   return true;
 }
 
-bool SurfaceReconstructionSrv::planarSegmentation(PointCloud<PointType>::Ptr cloud_ptr_)
-{
-	// surface segmentation
-	  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-	  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-	  // Create the segmentation object
-	  pcl::SACSegmentation<PointType> seg;
-	  // Optional
-	  seg.setOptimizeCoefficients (true);
-	  // Mandatory
-	  seg.setModelType (pcl::SACMODEL_PLANE);
-	  seg.setMethodType (pcl::SAC_RANSAC);
-//	  seg.setDistanceThreshold(inlier_dist_segmentation_);
-	  seg.setDistanceThreshold(inlier_dist_segmentation_*2);
-
-	  seg.setInputCloud (cloud_ptr_);
-	  seg.segment (*inliers, *coefficients);
-
-	//  ExtractIndices<PointType> extract;
-	//  int i = 0, nr_points = (int) cloud_filtered->points.size ();
-
-	  PointCloud<PointType>::Ptr cloud_filtered_ptr(new PointCloud<PointType>);
-
-	  std::cerr << "Model inliers: " << inliers->indices.size () << std::endl;
-	  for (size_t i = 0; i < inliers->indices.size (); ++i){
-		  cloud_filtered_ptr->points.push_back(cloud_ptr_->points[inliers->indices[i]]);
-	  }
-
-	  std::shared_ptr<visualization::PCLVisualizer> viewer;
-	  viewer = rgbVis(cloud_filtered_ptr);
-	  viewer->setWindowName("planar segmentationr: ");
-	  int count =0;
-	  while (count < 1000) {
-	    ++count;
-	    viewer->spinOnce(100);
-	    boost::this_thread::sleep(boost::posix_time::microseconds(1000));
-	  }
-
-	  return true;
-}
-
 bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
 {
   // DO NOT MODIFY! Parameter recalculation
@@ -342,9 +292,9 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
 
   std::string path = save_path_ + "/Downsampled_0.ply";
   io::savePLYFile(path, *cloud_downsampled);
-  path = save_path_ + "/Keypoints_0.pcd";
+  path = save_path_ + "/Keypoints_0.pcd"; // same as Downsampled.ply
   io::savePCDFile(path, *cloud_downsampled);
-  path = save_path_ + "/Preprocessed_0.pcd";
+  path = save_path_ + "/Preprocessed_0.pcd";// same as Downsampled.ply
   io::savePCDFile(path, *cloud_downsampled);
   ROS_INFO_STREAM("num of samples after down sample: " << cloud_downsampled->size());
   return true;
@@ -411,12 +361,13 @@ bool SurfaceReconstructionSrv::computeFPFHDescriptor(const PointCloud<PointType>
   fpfh.setInputNormals(normals_);
   fpfh.setRadiusSearch(0.02);  //FPFH_radius_
   fpfh.compute(*FPFH_signature_scene_);
-
+  std::string path = save_path_ + "/Signature_0.ply";
+  io::savePLYFile(path, *FPFH_signature_scene_);
   return true;
 }
 
 bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_,
-                                               PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__)
+                                               PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene_)
 {
   BOARDLocalReferenceFrameEstimation<PointType, Normal, ReferenceFrame> rf_est;
   rf_est.setFindHoles(true);
@@ -426,7 +377,10 @@ bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::Cons
   rf_est.setInputNormals(normals_);
   rf_est.setTangentRadius(lrf_search_radius_);
   rf_est.setSearchSurface(cloud_);
-  rf_est.compute(*FPFH_LRF_scene__);
+  rf_est.compute(*FPFH_LRF_scene_);
+  std::string path = save_path_ + "/LRFs_0.ply";
+  io::savePLYFile(path, *FPFH_LRF_scene_);
+
   return true;
 }
 
