@@ -69,7 +69,7 @@ private:
 private:
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
 
-	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_);
+	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_);
 
 	bool planarSegmentation(PointCloud<PointType>::Ptr cloud_ptr_);
 

@@ -2,7 +2,6 @@
 <!-- Run object detection publisher using parameterfile -->
 <launch>
 
-  <!-- <include file="$(find realsense_ros_camera)/launch/rs_camera.launch" /> -->
 
   <include file="$(find branch_surface)/launch/frame_broadcaster_kinect.launch" />
 

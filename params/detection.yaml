@@ -9,7 +9,7 @@ xmin: -0.3
 xmax: 0.3
 ymin: -0.3
 ymax: 0.3
-zmin: 0.5
+zmin: 0.1
 zmax: 1.5
 
 bin_size: 0.015
@@ -27,4 +27,4 @@ save_clouds: true
 
 use_hough: false
 
-point_cloud_topic: /kinect2/hd/points
+point_cloud_topic: /kinect2/sd/points

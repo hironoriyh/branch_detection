@@ -51,6 +51,7 @@
 
 #include <pcl/common/centroid.h>
 #include <pcl/filters/project_inliers.h>
+#include <Eigen/Geometry>
 
 //using namespace point_cloud_filtering;
 
@@ -207,27 +208,26 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   path = save_path_ + "/LRFs_0.ply";
   io::savePLYFile(path, *FPFH_LRF_scene);
 
+  reorientModel(cloud_ptr, cloud_normals);
+
   std::cout << "service done!" << std::endl;
 
   return true;
 }
 
-bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_){
+bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_ )
+{
 
-  Eigen::Vector4f centroid;
-//  Eigen::Matrix4f centroid;
-  compute3DCentroid(*cloud_ptr_, centroid);
-  std::cout << "centorid is : " << centroid[0] << " , " <<
-      centroid[1] << " , "  << centroid[2] << std::endl;
-  centroid *= -1;
-
-  Eigen::Matrix4f transform_1 = Eigen::Matrix4f::Identity();
-  transform_1 (0,3)  = centroid[0];
-  transform_1 (1,3)  = centroid[1];
-  transform_1 (2,3)  = centroid[2];
+  Eigen::Quaternionf camera_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z );
+  Eigen::Vector3f camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z );
+  Eigen::Affine3f matrix;
+  matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+  Eigen::Matrix4f& m_ = matrix.matrix();
 
   PointCloud<PointType>::Ptr could_transformed (new PointCloud<PointType>());
-  transformPointCloud( *cloud_ptr_, *could_transformed, transform_1);
+  transformPointCloud( *cloud_ptr_, *could_transformed, m_.inverse());
+  std::string path = save_path_ + "/could_transformed.ply";
+  io::savePLYFile(path, *could_transformed);
 
   // projection
   PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
@@ -242,22 +242,20 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
   proj.setInputCloud(could_transformed);
   proj.setModelCoefficients(coefficients);
   proj.filter(*cloud_projected);
+  path = save_path_ + "/projected.ply";
+  io::savePLYFile(path, *cloud_projected);
 
+  // concatination
   PointCloud<PointType>::Ptr cloud_combined(new PointCloud<PointType>());
   cloud_combined = could_transformed;
   *cloud_combined += *cloud_projected;
-//  concatenateFields(*could_transformed, *cloud_projected, *cloud_combined);
-  std::string path = save_path_ + "/reoriented.ply";
-  io::savePLYFile(path, *could_transformed);
-  path = save_path_ + "/projected.ply";
-  io::savePLYFile(path, *cloud_projected);
   path = save_path_ + "/combined.ply";
   io::savePLYFile(path, *cloud_combined);
 
   std::cout << "combine points and normals" << std::endl;
-  computeNormals(cloud_combined, cloud_normals);
+  computeNormals(cloud_combined, cloud_normals_);
   PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
-  concatenateFields(*cloud_combined, *cloud_normals, *cloud_smoothed_normals);
+  concatenateFields(*cloud_combined, *cloud_normals_, *cloud_smoothed_normals);
   poisson(cloud_smoothed_normals);
   return true;
 }
@@ -619,7 +617,16 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 //  cloud.header.frame_id = world_frame_;
   PointCloud<PointType> new_cloud;
   fromROSMsg(cloud, new_cloud);
-  cloud_vector_.push_back(new_cloud);
+  if(point_cloud_topic_ != "/kinect2/sd/points"){
+  Eigen::Affine3f matrix = Eigen::Affine3f::Identity() * Eigen::Scaling(Eigen::Vector3f(0.5, 0.5, 0.5)); // or //  Eigen::UniformScaling(0.5);
+  Eigen::Matrix4f& m_ = matrix.matrix();
+  PointCloud<PointType>::Ptr could_scaled (new PointCloud<PointType>());
+  transformPointCloud(new_cloud, *could_scaled, m_);
+  cloud_vector_.push_back(*could_scaled);
+  }
+  else {
+    cloud_vector_.push_back(new_cloud);
+  }
 }
 
 }/*end namespace*/
