@@ -50,7 +50,7 @@
 #include <pcl/ModelCoefficients.h>
 
 #include <pcl/common/centroid.h>
-
+#include <pcl/filters/project_inliers.h>
 
 //using namespace point_cloud_filtering;
 
@@ -59,6 +59,8 @@ namespace surface_reconstruction_srv {
 SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle)
 {
+
+  save_package_ = "branch_surface";
 
   nodeHandle.getParam("/surface_reconstruction_service/leaf_size", leaf_size_);
   nodeHandle.getParam("/surface_reconstruction_service/model_folder", model_folder_);
@@ -92,6 +94,9 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   nodeHandle.getParam("/surface_reconstruction_service/use_saved_pc", use_saved_pc_);
   nodeHandle.getParam("/surface_reconstruction_service/save_clouds", save_clouds_);
   nodeHandle.getParam("/surface_reconstruction_service/save_path", save_path_);
+  nodeHandle.getParam("/surface_reconstruction_service/save_package", save_package_);
+
+
   nodeHandle.getParam("/surface_reconstruction_service/compute_keypoints", compute_keypoints_);
 
   nodeHandle.getParam("/surface_reconstruction_service/world_frame", world_frame_);
@@ -119,7 +124,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   std::string model_name = req.models_to_detect[0].data;
   std::cout << "service called! " <<  model_name << std::endl;
-  save_path_ = ros::package::getPath("urdf_models") + "/models/" + model_name;
+  save_path_ = ros::package::getPath(save_package_) + "/models/" + model_name;
   std::cout << "save path is updated: " <<  save_path_ << std::endl;
 
   // Sample clouds
@@ -177,13 +182,6 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   computeNormals(cloud_ptr, cloud_normals);
 
-  //
-  std::cout << "combine points and normals" << std::endl;
-  PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
-  concatenateFields(*cloud_ptr, *cloud_normals, *cloud_smoothed_normals);
-  path = save_path_ + "/Concatinated_0.ply";
-  io::savePLYFile(path, *cloud_ptr);
-
   PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
   computeFPFHDescriptor(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
   path = save_path_ + "/Signature_0.ply";
@@ -208,9 +206,37 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   PointCloud<PointType>::Ptr could_transformed (new PointCloud<PointType>());
   transformPointCloud( *cloud_ptr, *could_transformed, transform_1);
+
+  // projection
+  PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
+  pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
+  coefficients->values.resize(4);
+  coefficients->values[0] = coefficients->values[1] = 0;
+  coefficients->values[2] = 1.0;
+  coefficients->values[3] = 0;
+
+  ProjectInliers<PointType> proj;
+  proj.setModelType(pcl::SACMODEL_PLANE);
+  proj.setInputCloud(could_transformed);
+  proj.setModelCoefficients(coefficients);
+  proj.filter(*cloud_projected);
+
+  PointCloud<PointType>::Ptr cloud_combined(new PointCloud<PointType>());
+  cloud_combined = could_transformed;
+  *cloud_combined += *cloud_projected;
+//  concatenateFields(*could_transformed, *cloud_projected, *cloud_combined);
   path = save_path_ + "/reoriented.ply";
   io::savePLYFile(path, *could_transformed);
+  path = save_path_ + "/projected.ply";
+  io::savePLYFile(path, *cloud_projected);
+  path = save_path_ + "/combined.ply";
+  io::savePLYFile(path, *cloud_combined);
 
+  std::cout << "combine points and normals" << std::endl;
+  computeNormals(cloud_combined, cloud_normals);
+  PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
+  concatenateFields(*cloud_combined, *cloud_normals, *cloud_smoothed_normals);
+  poisson(cloud_smoothed_normals);
 
   std::cout << "service done!" << std::endl;
 
@@ -515,59 +541,11 @@ bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr 
   poisson.setInputCloud(cloud_smoothed_normals);
   PolygonMesh mesh;
   poisson.reconstruct(mesh);
-  std::string path = "/home/hyoshdia/Documents/realsense_pcl/poisson.ply";
+//  save_path_ = ros::package::getPath("urdf_models") + "/models/" + model_name;
+  std::string path = save_path_+ "/poisson.ply";
   io::savePLYFile(path, mesh);
 
-  //  std::cout << "begin marching cube" << std::endl;
-  //  MarchingCubes<PointNormal> * mc;
-  //  mc = new MarchingCubesHoppe<PointNormal> ();
-  //  float iso_level = 0.0f;
-  //  int hoppe_or_rbf = 0;
-  //  float extend_percentage = 0.0f;
-  //  int grid_res = grid_res_;
-  //  float off_surface_displacement = 0.01f;
-  //  mc->setIsoLevel (iso_level);
-  //  mc->setGridResolution (grid_res, grid_res, grid_res);
-  //  mc->setPercentageExtendGrid (extend_percentage);
-  //  mc->setInputCloud (cloud_smoothed_normals);
-  //  mc->reconstruct(mesh);
-  //  path = "/home/hyoshdia/Documents/realsense_pcl/mc.ply";
-  //  io::savePLYFile(path, mesh);
-  //  delete mc;
-
-  // Create search tree*
-  //  std::cout << "begin GreedyProjectionTriangulation" << std::endl;
-  //  search::KdTree<PointNormal>::Ptr tree2(new search::KdTree<PointNormal>);
-  //  tree2->setInputCloud(cloud_smoothed_normals);
-  //  // Initialize objects
-  //  GreedyProjectionTriangulation<PointNormal> gp3;
-  //  gp3.setSearchRadius(0.025);   // Set the maximum distance between connected points (maximum edge length)
-  //  gp3.setMu(2.5);   // Set typical values for the parameters
-  //  gp3.setMaximumNearestNeighbors(300);
-  //  gp3.setMaximumSurfaceAngle(M_PI / 4);  // 45 degrees
-  //  gp3.setMinimumAngle(M_PI / 18);  // 10 degrees
-  //  gp3.setMaximumAngle(2 * M_PI / 3);  // 120 degrees
-  //  gp3.setNormalConsistency(false);
-  //
-  //  // Get result
-  //  gp3.setInputCloud(cloud_smoothed_normals);
-  //  gp3.setSearchMethod(tree2);
-  //  gp3.reconstruct(mesh);
-  //  path = "/home/hyoshdia/Documents/realsense_pcl/gp.ply";
-  //  io::savePLYFile(path, mesh);
-  //
-  //  //visualization
-  //  std::shared_ptr<visualization::PCLVisualizer> viewer1;
-  //  std::shared_ptr<visualization::PCLVisualizer> viewer2;
-  //
-  //  viewer1 = normalsVis(cloud_ptr, cloud_normals);
-  //  viewer2 = rgbVis(colored_cloud_ptr);
-  //  while (!viewer1->wasStopped()) {
-  //    viewer1->spinOnce(100);
-  //    viewer2->spinOnce(100);
-  //    boost::this_thread::sleep(boost::posix_time::microseconds(100000));
-  //  }
-  return true;
+    return true;
 }
 
 std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals)

@@ -121,6 +121,8 @@ private:
 	bool compute_keypoints_;
 	bool save_clouds_;
 	std::string save_path_;
+  std::string save_package_;
+
 
   tf::TransformListener tf_listener_;
   std::string world_frame_;

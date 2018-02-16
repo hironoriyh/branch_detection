@@ -1,4 +1,4 @@
-leaf_size: 0.0025
+leaf_size: 0.02
 model_folder: ""
 number_of_average_clouds: 1
 number_of_median_clouds: 1
@@ -33,6 +33,7 @@ use_saved_pc: false
 full_display: true
 compute_keypoints: false
 save_clouds: true
+save_package: branch_surface
 
 camera_frame: camera_link
 # point_cloud_topic: /sr300/depth_registered/points

@@ -11,7 +11,11 @@
   </node>
 
   <node pkg="object_detection" type="object_pose_refinement_service" name="object_pose_refinement_service" output="screen">
-   <rosparam command="load" file="$(find object_detection)/params/refinement.yaml"/>
+   <rosparam command="load" file="$(find branch_surface)/params/refinement.yaml"/>
+  </node>
+  
+    <node pkg="object_detection" type="object_pose_refinement_service" name="object_detection_service" output="screen">
+   <rosparam command="load" file="$(find branch_surface)/params/detection.yaml"/>
   </node>
 
 
