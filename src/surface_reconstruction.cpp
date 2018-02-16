@@ -111,12 +111,27 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   bound_vec_.push_back(zmax_);
 
   ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
+  cameraPoseStateSubscriber_ = nodeHandle_.subscribe <geometry_msgs::PoseStamped> ("/aruco/pose", 1, &SurfaceReconstructionSrv::CameraPoseCallback, this);
+
   ROS_INFO("Ready to define surface.");
   ros::spin();
 }
 
 SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
 {
+}
+
+void SurfaceReconstructionSrv::CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+  camera_pose_ = *msg;
+  camera_pose_.pose.position.x *= 0.01;
+  camera_pose_.pose.position.y *= 0.01;
+  camera_pose_.pose.position.z *= 0.01;
+
+//  ROS_INFO_STREAM(hand_state_.collision);
+//  uint8_t collision_check = 1;
+//  printf("msg: %" PRIu8 "\n", hand_state_.collision);
+//  printf("test: %" PRIu8 "\n", collision_check);
 }
 
 bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, DetectObject::Response &resp)
@@ -192,9 +207,16 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   path = save_path_ + "/LRFs_0.ply";
   io::savePLYFile(path, *FPFH_LRF_scene);
 
+  std::cout << "service done!" << std::endl;
+
+  return true;
+}
+
+bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_){
+
   Eigen::Vector4f centroid;
 //  Eigen::Matrix4f centroid;
-  compute3DCentroid(*cloud_ptr, centroid);
+  compute3DCentroid(*cloud_ptr_, centroid);
   std::cout << "centorid is : " << centroid[0] << " , " <<
       centroid[1] << " , "  << centroid[2] << std::endl;
   centroid *= -1;
@@ -205,7 +227,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   transform_1 (2,3)  = centroid[2];
 
   PointCloud<PointType>::Ptr could_transformed (new PointCloud<PointType>());
-  transformPointCloud( *cloud_ptr, *could_transformed, transform_1);
+  transformPointCloud( *cloud_ptr_, *could_transformed, transform_1);
 
   // projection
   PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
@@ -225,7 +247,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   cloud_combined = could_transformed;
   *cloud_combined += *cloud_projected;
 //  concatenateFields(*could_transformed, *cloud_projected, *cloud_combined);
-  path = save_path_ + "/reoriented.ply";
+  std::string path = save_path_ + "/reoriented.ply";
   io::savePLYFile(path, *could_transformed);
   path = save_path_ + "/projected.ply";
   io::savePLYFile(path, *cloud_projected);
@@ -237,9 +259,6 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
   concatenateFields(*cloud_combined, *cloud_normals, *cloud_smoothed_normals);
   poisson(cloud_smoothed_normals);
-
-  std::cout << "service done!" << std::endl;
-
   return true;
 }
 

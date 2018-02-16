@@ -27,5 +27,4 @@ save_clouds: true
 
 use_hough: false
 
-# point_cloud_topic: /sr300/depth/points
 point_cloud_topic: /kinect2/hd/points

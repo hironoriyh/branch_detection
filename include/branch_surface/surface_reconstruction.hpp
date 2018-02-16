@@ -31,6 +31,8 @@
 
 #include <branch_surface/DetectObject.h>
 
+#include <geometry_msgs/PoseStamped.h>
+
 using namespace pcl;
 typedef PointXYZRGB PointType;
 typedef branch_surface::DetectObject DetectObject;
@@ -65,6 +67,10 @@ private:
 	std::shared_ptr<visualization::PCLVisualizer> xyzVis(PointCloud<PointXYZ>::ConstPtr cloud);
 
 private:
+	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
+
+	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_);
+
 	bool planarSegmentation(PointCloud<PointType>::Ptr cloud_ptr_);
 
 	bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
@@ -86,6 +92,11 @@ private:
 	bool computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_, PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__);
 
 	ros::NodeHandle nodeHandle_;
+
+	ros::Subscriber cameraPoseStateSubscriber_;
+
+	geometry_msgs::PoseStamped camera_pose_;
+
 
 	std::vector<PointCloud<PointType>> cloud_vector_;
 	search::KdTree<PointType>::Ptr tree_;
