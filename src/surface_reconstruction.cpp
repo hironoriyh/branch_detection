@@ -203,19 +203,27 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_)
 {
 
-  Eigen::Quaternionf camera_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
-//  Eigen::Quaternionf camera_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
-  Eigen::Quaternionf quat_link_to_depth_frame(0.5, -0.5, 0.5, -0.5);
+  PointCloud<PointType>::Ptr could_transformed(new PointCloud<PointType>);
 
-  Eigen::Vector3f camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
-  Eigen::Vector3f pos_from_link_to_depth(0.004, -0.025, 0.001);
+    const ros::Time time = ros::Time::now();
+    Eigen::Quaternionf camera_quat(0, 0.707, 0, -0.707);
+    Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
 
-  Eigen::Affine3f matrix;
-  matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-  Eigen::Matrix4f& m_ = matrix.matrix();
+    Eigen::Affine3f matrix;
+    matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+    Eigen::Matrix4f& m_ = matrix.matrix();
+    tf::StampedTransform transform;
 
-  PointCloud<PointType>::Ptr could_transformed(new PointCloud<PointType>());
-  transformPointCloud(*cloud_ptr_, *could_transformed, m_.inverse());
+    try {
+      tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
+      ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
+      transformPointCloud(*cloud_ptr_, *could_transformed, m_.inverse());
+
+    } catch (tf2::TransformException &ex) {
+      ROS_WARN("%s", ex.what());
+      ros::Duration(1.0).sleep();
+    }
+
   std::string path = save_path_ + "/could_transformed.ply";
   io::savePLYFile(path, *could_transformed);
 
@@ -571,27 +579,28 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
   PointCloud<PointType> new_cloud, could_transformed;
   fromROSMsg(cloud, new_cloud);
 
-  const ros::Time time = ros::Time::now();
-  Eigen::Quaternionf camera_quat(0, 0.707, 0, -0.707);
-  Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
+//  const ros::Time time = ros::Time::now();
+//  Eigen::Quaternionf camera_quat(0, 0.707, 0, -0.707);
+//  Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
+//
+//  Eigen::Affine3f matrix;
+//  matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+//  Eigen::Matrix4f& m_ = matrix.matrix();
+//  tf::StampedTransform transform;
+//
+//  try {
+//    tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
+////    tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
+//    ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
+////    << " , " << transform.getBasis() << " , " << transform.getRotation());
+//    transformPointCloud(new_cloud, could_transformed, m_.inverse());
+//
+//  } catch (tf2::TransformException &ex) {
+//    ROS_WARN("%s", ex.what());
+//    ros::Duration(1.0).sleep();
+//  }
 
-  Eigen::Affine3f matrix;
-  matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-  Eigen::Matrix4f& m_ = matrix.matrix();
-  tf::StampedTransform transform;
-
-  try {
-    tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
-//    tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
-    ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
-//    << " , " << transform.getBasis() << " , " << transform.getRotation());
-    transformPointCloud(new_cloud, could_transformed, m_.inverse());
-
-  } catch (tf2::TransformException &ex) {
-    ROS_WARN("%s", ex.what());
-    ros::Duration(1.0).sleep();
-  }
-  cloud_vector_.push_back(could_transformed);
+  cloud_vector_.push_back(new_cloud);
 }
 
 }/*end namespace*/
