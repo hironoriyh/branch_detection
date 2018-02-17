@@ -204,7 +204,12 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 {
 
   Eigen::Quaternionf camera_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
+//  Eigen::Quaternionf camera_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
+  Eigen::Quaternionf quat_link_to_depth_frame(0.5, -0.5, 0.5, -0.5);
+
   Eigen::Vector3f camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
+  Eigen::Vector3f pos_from_link_to_depth(0.004, -0.025, 0.001);
+
   Eigen::Affine3f matrix;
   matrix = Eigen::Translation3f(camera_pos) * camera_quat;
   Eigen::Matrix4f& m_ = matrix.matrix();
@@ -469,15 +474,6 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
     std::cout << "First cluster has " << clusters[0].indices.size() << " points." << endl;
     std::cout << "These are the indices of the points of the initial" << std::endl << "cloud that belong to the first cluster:" << std::endl;
 
-    int counter = 0;
-    while (counter < clusters[0].indices.size()) {
-      std::cout << clusters[0].indices[counter] << ", ";
-      counter++;
-      if (counter % 10 == 0)
-        std::cout << std::endl;
-    }
-    std::cout << std::endl;
-
     PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
     int j = 0;
     for (std::vector<PointIndices>::const_iterator it = clusters.begin(); it != clusters.end(); ++it) {
@@ -570,18 +566,32 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 {
   std::cout << "the length of cloud sensor msg is " << cloud.data[100] << std::endl;
   std::cout << "cloud frame" << cloud.header.frame_id << std::endl;
-//  cloud.header.frame_id = world_frame_;
-  PointCloud<PointType> new_cloud;
+
+
+  PointCloud<PointType> new_cloud, could_transformed;
   fromROSMsg(cloud, new_cloud);
-  if (point_cloud_topic_ != "/kinect2/sd/points") {
-    Eigen::Affine3f matrix = Eigen::Affine3f::Identity() * Eigen::Scaling(Eigen::Vector3f(0.5, 0.5, 0.5));  // or //  Eigen::UniformScaling(0.5);
-    Eigen::Matrix4f& m_ = matrix.matrix();
-    PointCloud<PointType>::Ptr could_scaled(new PointCloud<PointType>());
-    transformPointCloud(new_cloud, *could_scaled, m_);
-    cloud_vector_.push_back(*could_scaled);
-  } else {
-    cloud_vector_.push_back(new_cloud);
+
+  const ros::Time time = ros::Time::now();
+  Eigen::Quaternionf camera_quat(0, 0.707, 0, -0.707);
+  Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
+
+  Eigen::Affine3f matrix;
+  matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+  Eigen::Matrix4f& m_ = matrix.matrix();
+  tf::StampedTransform transform;
+
+  try {
+    tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
+//    tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
+    ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
+//    << " , " << transform.getBasis() << " , " << transform.getRotation());
+    transformPointCloud(new_cloud, could_transformed, m_.inverse());
+
+  } catch (tf2::TransformException &ex) {
+    ROS_WARN("%s", ex.what());
+    ros::Duration(1.0).sleep();
   }
+  cloud_vector_.push_back(could_transformed);
 }
 
 }/*end namespace*/

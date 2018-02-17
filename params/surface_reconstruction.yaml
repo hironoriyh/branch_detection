@@ -32,7 +32,7 @@ grid_res: 200
 use_saved_pc: false
 full_display: true
 compute_keypoints: false
-save_clouds: true
+save_clouds: false
 save_package: branch_surface
 
 camera_frame: camera_link

@@ -2,7 +2,7 @@
 <!-- Run object detection publisher using parameterfile -->
 <launch>
 
-  <include file="$(find realsense_ros_camera)/launch/rs_rgbd.launch" />
+  <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
 
   <include file="$(find aruco)/launch/realsense.launch" />
 
