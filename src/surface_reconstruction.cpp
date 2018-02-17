@@ -183,11 +183,14 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   computeNormals(cloud_ptr, cloud_normals);
 
+  reorientModel(cloud_ptr, cloud_normals);
+
+  computeNormals(cloud_ptr, cloud_normals);
+
   computeFPFHDescriptor(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
 
   computeFPFHLRFs(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_LRF_scene);
 
-  reorientModel(cloud_ptr, cloud_normals);
 
   // region growing
   copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
@@ -229,6 +232,7 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 
 	std::string path = save_path_ + "/cloud_transformed.ply";
 	io::savePLYFile(path, *cloud_transformed);
+	cloud_ptr_ = cloud_transformed;
 
 	// projection
 	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());

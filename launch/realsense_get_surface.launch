@@ -18,7 +18,7 @@
    <param name="point_cloud_topic" value ="/camera/depth_registered/points" />
   </node>
   
-    <node pkg="object_detection" type="object_pose_refinement_service" name="object_detection_service" output="screen">
+    <node pkg="object_detection" type="object_detection_service" name="object_detection_service" output="screen">
    <rosparam command="load" file="$(find branch_surface)/params/detection.yaml"/>
    <param name="point_cloud_topic" value ="/camera/depth_registered/points" />
   </node>
