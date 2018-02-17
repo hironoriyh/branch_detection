@@ -174,12 +174,6 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
      DownSample(cloud_ptr);
   }
 
-  // region growing
-  copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
-  std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-      //   regionGrowing(cloud_ptr_xyz, cloud_normals);
-  regionGrowingRGB(cloud_ptr, cloud_normals);
-
   // keypoints are not working with matching...
 //  if (compute_keypoints_) {
 //    computeKeypoints(cloud_ptr, keypoint_model_ptr);
@@ -195,6 +189,12 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
   reorientModel(cloud_ptr, cloud_normals);
 
+  // region growing
+  copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+  std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+  regionGrowing(cloud_ptr_xyz, cloud_normals);
+  regionGrowingRGB(cloud_ptr, cloud_normals);
+
   std::cout << "service done!" << std::endl;
 
   return true;
@@ -203,59 +203,63 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_)
 {
 
-  PointCloud<PointType>::Ptr could_transformed(new PointCloud<PointType>);
+	ROS_INFO("reorient_cloud");
 
-    const ros::Time time = ros::Time::now();
-    Eigen::Quaternionf camera_quat(0, 0.707, 0, -0.707);
-    Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
+	PointCloud<PointType>::Ptr cloud_transformed(new PointCloud<PointType>);
 
-    Eigen::Affine3f matrix;
-    matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-    Eigen::Matrix4f& m_ = matrix.matrix();
-    tf::StampedTransform transform;
+	const ros::Time time = ros::Time::now();
+	Eigen::Quaternionf camera_quat(0, -1.0 , 0, 0);
+	Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
 
-    try {
-      tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
-      ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
-      transformPointCloud(*cloud_ptr_, *could_transformed, m_.inverse());
+	Eigen::Affine3f matrix;
+	matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+	Eigen::Matrix4f& m_ = matrix.matrix();
+	tf::StampedTransform transform;
+	transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
 
-    } catch (tf2::TransformException &ex) {
-      ROS_WARN("%s", ex.what());
-      ros::Duration(1.0).sleep();
-    }
+	try {
+		tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
+		ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
+		transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
 
-  std::string path = save_path_ + "/could_transformed.ply";
-  io::savePLYFile(path, *could_transformed);
+	} catch (tf2::TransformException &ex) {
+		ROS_WARN("%s", ex.what());
+		ros::Duration(1.0).sleep();
+	}
 
-  // projection
-  PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
-  pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
-  coefficients->values.resize(4);
-  coefficients->values[0] = coefficients->values[1] = 0;
-  coefficients->values[2] = 1.0;
-  coefficients->values[3] = 0;
+	std::string path = save_path_ + "/cloud_transformed.ply";
+	io::savePLYFile(path, *cloud_transformed);
 
-  ProjectInliers<PointType> proj;
-  proj.setModelType(pcl::SACMODEL_PLANE);
-  proj.setInputCloud(could_transformed);
-  proj.setModelCoefficients(coefficients);
-  proj.filter(*cloud_projected);
-  path = save_path_ + "/projected.ply";
-  io::savePLYFile(path, *cloud_projected);
+	// projection
+	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
+	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
+	coefficients->values.resize(4);
+	coefficients->values[0] = coefficients->values[1] = 0;
+	coefficients->values[2] = 1.0;
+	coefficients->values[3] = 0;
 
-  // concatination
-  PointCloud<PointType>::Ptr cloud_combined(new PointCloud<PointType>());
-  cloud_combined = could_transformed;
-  *cloud_combined += *cloud_projected;
-  path = save_path_ + "/combined.ply";
-  io::savePLYFile(path, *cloud_combined);
+	ProjectInliers<PointType> proj;
+	proj.setModelType(pcl::SACMODEL_PLANE);
+	proj.setInputCloud(cloud_transformed);
+	proj.setModelCoefficients(coefficients);
+	proj.filter(*cloud_projected);
+	path = save_path_ + "/projected.ply";
+	io::savePLYFile(path, *cloud_projected);
 
-  std::cout << "combine points and normals" << std::endl;
-  computeNormals(cloud_combined, cloud_normals_);
-  PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
-  concatenateFields(*cloud_combined, *cloud_normals_, *cloud_smoothed_normals);
-  poisson(cloud_smoothed_normals);
-  return true;
+	// concatination
+	PointCloud<PointType>::Ptr cloud_combined(new PointCloud<PointType>());
+	cloud_combined = cloud_transformed;
+	*cloud_combined += *cloud_projected;
+	path = save_path_ + "/combined.ply";
+	io::savePLYFile(path, *cloud_combined);
+
+	std::cout << "combine points and normals" << std::endl;
+	computeNormals(cloud_combined, cloud_normals_);
+	PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
+	concatenateFields(*cloud_combined, *cloud_normals_, *cloud_smoothed_normals);
+	poisson(cloud_smoothed_normals);
+
+	return true;
 }
 
 bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
@@ -424,25 +428,26 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   reg.extract(clusters);
 
   if (clusters.size() > 0) {
-    PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
     std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
+    std::cout << "First cluster has " << clusters[0].indices.size() << " points." << endl;
+    std::cout << "These are the indices of the points of the initial" << std::endl << "cloud that belong to the first cluster:" << std::endl;
 
-    PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
-    for (size_t j = 0; clusters[0].indices.size(); ++j) {
-      int indice = clusters[0].indices[j];
-      if (indice == 0 || indice > cloud_filtered->width)
-        continue;
-      else {
-        cout << "indice is " << indice << endl;
-        cloud_cluster->points.push_back(cloud_filtered->points[indice]);
-      }
+    PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
+    int j = 0;
+    for (std::vector<PointIndices>::const_iterator it = clusters.begin(); it != clusters.end(); ++it) {
+      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
+      for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit)
+        cloud_cluster->points.push_back(cloud_filtered->points[*pit]);
+      cloud_cluster->width = cloud_cluster->points.size();
+      cloud_cluster->height = 1;
+      cloud_cluster->is_dense = true;
+
+      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
+      std::string path = save_path_ + "/Regiongrow" + std::to_string(j) + ".ply";
+      io::savePLYFile(path, *cloud_cluster);
+      j++;
     }
-
-    cloud_cluster->width = cloud_cluster->points.size();
-    cloud_cluster->height = 1;
-    cloud_cluster->is_dense = true;
-    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
-
+    return true;
   } else {
     ROS_ERROR("region growing didn't find cluster");
     return false;
@@ -493,10 +498,12 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
       cloud_cluster->is_dense = true;
 
       std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
-      std::string path = save_path_ + "/RGBregiongrow" + std::to_string(j) + ".pcd";
-      io::savePCDFile(path, *cloud_cluster);
+      std::string path = save_path_ + "/RGBregiongrow" + std::to_string(j) + ".ply";
+      io::savePLYFile(path, *cloud_cluster);
       j++;
     }
+    return true;
+
   } else {
     ROS_ERROR("region growing didn't find cluster");
     return false;

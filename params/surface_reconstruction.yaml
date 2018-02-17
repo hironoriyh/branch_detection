@@ -7,9 +7,9 @@ planarSegmentationTolerance: 0.02
 min_number_of_inliers: 15000
 xmin: -0.3
 xmax: 0.3
-ymin: -0.3
-ymax: 0.3
-zmin: 0.1
+ymin: -0.1
+ymax: 0.4
+zmin: 0.5
 zmax: 1.5
 
 
@@ -32,7 +32,7 @@ grid_res: 200
 use_saved_pc: false
 full_display: true
 compute_keypoints: false
-save_clouds: false
+save_clouds: true
 save_package: branch_surface
 
 camera_frame: camera_link
