@@ -3,7 +3,7 @@
 <launch>
 
 
-  <include file="$(find branch_surface)/launch/frame_broadcaster_kinect.launch" />
+  <include file="$(find branch_surface)/launch/frame_broadcaster_kinect2.launch" />
 
   <node pkg="branch_surface" type="surface_reconstruction_service" name="surface_reconstruction_service" output="screen">
     <rosparam command="load" file="$(find branch_surface)/params/surface_reconstruction.yaml"/>

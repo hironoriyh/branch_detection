@@ -5,11 +5,15 @@
  *      Author: Hironori Yoshida
  */
 #include "branch_surface/surface_reconstruction.hpp"
+#include "branch_surface/filtering.hpp"
+
 #include <vector>
+#include <Eigen/Geometry>
 
 // ros
 #include <ros/ros.h>
 #include <ros/package.h>
+
 #include <pcl/PCLPointCloud2.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -37,21 +41,14 @@
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/io/vtk_io.h>
 
-#include "branch_surface/filtering.hpp"
 
 // region growing
 #include <pcl/segmentation/region_growing.h>
 #include <pcl/segmentation/region_growing_rgb.h>
 #include <pcl/search/search.h>
 
-// cylinder extraction
-#include <pcl/filters/extract_indices.h>
-#include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/ModelCoefficients.h>
-
 #include <pcl/common/centroid.h>
 #include <pcl/filters/project_inliers.h>
-#include <Eigen/Geometry>
 
 //using namespace point_cloud_filtering;
 
@@ -97,12 +94,10 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   nodeHandle.getParam("/surface_reconstruction_service/save_path", save_path_);
   nodeHandle.getParam("/surface_reconstruction_service/save_package", save_package_);
 
-
   nodeHandle.getParam("/surface_reconstruction_service/compute_keypoints", compute_keypoints_);
 
   nodeHandle.getParam("/surface_reconstruction_service/world_frame", world_frame_);
   nodeHandle.getParam("/surface_reconstruction_service/camera_frame", camera_frame_);
-
 
   bound_vec_.push_back(xmin_);
   bound_vec_.push_back(xmax_);
@@ -112,7 +107,7 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   bound_vec_.push_back(zmax_);
 
   ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
-  cameraPoseStateSubscriber_ = nodeHandle_.subscribe <geometry_msgs::PoseStamped> ("/aruco/pose", 1, &SurfaceReconstructionSrv::CameraPoseCallback, this);
+  cameraPoseStateSubscriber_ = nodeHandle_.subscribe<geometry_msgs::PoseStamped>("/aruco/pose", 1, &SurfaceReconstructionSrv::CameraPoseCallback, this);
 
   ROS_INFO("Ready to define surface.");
   ros::spin();
@@ -122,7 +117,7 @@ SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
 {
 }
 
-void SurfaceReconstructionSrv::CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg)
+void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
   camera_pose_ = *msg;
   camera_pose_.pose.position.x *= 0.01;
@@ -139,52 +134,51 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 {
 
   std::string model_name = req.models_to_detect[0].data;
-  std::cout << "service called! " <<  model_name << std::endl;
+  std::cout << "service called! " << model_name << std::endl;
   save_path_ = ros::package::getPath(save_package_) + "/models/" + model_name;
-  std::cout << "save path is updated: " <<  save_path_ << std::endl;
-
-  // Sample clouds
-  ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
-  ros::Rate r(60);
-  std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
-
-  while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
-    //    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
-    ros::spinOnce();
-    r.sleep();
-  }
-  std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
-  std::string path;
-
-  if (save_clouds_) {
-    path = save_path_ + "/cloud_raw.ply";
-    io::savePLYFile(path, cloud_vector_[0]);
-  }
+  std::cout << "save path is updated: " << save_path_ << std::endl;
 
 
-  // if(use_saved_pc_)
   PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
   PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
   PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
-//  PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
+  PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
   PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
   PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene(new PointCloud<ReferenceFrame>);
 
+
   // loadPCD or pcd
   if (use_saved_pc_) {
-    std::string file_name = save_path_ + "Preprocessed_0.pcd";
-    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)  PCL_ERROR("Couldn't read pcd file \n");
+    std::string file_name = save_path_ + "/pcd/Preprocessed_0.pcd";
+    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)
+      PCL_ERROR("Couldn't read pcd file \n");
+  } else {
+
+    // Sample clouds
+     ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
+     ros::Rate r(60);
+     std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
+
+     while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
+       //    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
+       ros::spinOnce();
+       r.sleep();
+     }
+     std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
+     std::string path;
+     if (save_clouds_) {
+       path = save_path_ + "/cloud_raw.ply";
+       io::savePLYFile(path, cloud_vector_[0]);
+     }
+     preprocess(cloud_ptr);
+     DownSample(cloud_ptr);
   }
-  else
-  {
-      preprocess(cloud_ptr);
-      // region growing
-//       copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
-//       std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-    //   regionGrowing(cloud_ptr_xyz, cloud_normals);
-//        regionGrowingRGB(cloud_ptr, cloud_normals);
-      DownSample(cloud_ptr);
-  }
+
+  // region growing
+  copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
+  std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+      //   regionGrowing(cloud_ptr_xyz, cloud_normals);
+  regionGrowingRGB(cloud_ptr, cloud_normals);
 
   // keypoints are not working with matching...
 //  if (compute_keypoints_) {
@@ -206,17 +200,17 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
   return true;
 }
 
-bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_ )
+bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_)
 {
 
-  Eigen::Quaternionf camera_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z );
-  Eigen::Vector3f camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z );
+  Eigen::Quaternionf camera_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
+  Eigen::Vector3f camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
   Eigen::Affine3f matrix;
   matrix = Eigen::Translation3f(camera_pos) * camera_quat;
   Eigen::Matrix4f& m_ = matrix.matrix();
 
-  PointCloud<PointType>::Ptr could_transformed (new PointCloud<PointType>());
-  transformPointCloud( *cloud_ptr_, *could_transformed, m_.inverse());
+  PointCloud<PointType>::Ptr could_transformed(new PointCloud<PointType>());
+  transformPointCloud(*cloud_ptr_, *could_transformed, m_.inverse());
   std::string path = save_path_ + "/could_transformed.ply";
   io::savePLYFile(path, *could_transformed);
 
@@ -289,12 +283,11 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
   sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
   sor.filter(*cloud_downsampled);
 
-
   std::string path = save_path_ + "/Downsampled_0.ply";
   io::savePLYFile(path, *cloud_downsampled);
-  path = save_path_ + "/Keypoints_0.pcd"; // same as Downsampled.ply
+  path = save_path_ + "/Keypoints_0.pcd";  // same as Downsampled.ply
   io::savePCDFile(path, *cloud_downsampled);
-  path = save_path_ + "/Preprocessed_0.pcd";// same as Downsampled.ply
+  path = save_path_ + "/Preprocessed_0.pcd";  // same as Downsampled.ply
   io::savePCDFile(path, *cloud_downsampled);
   ROS_INFO_STREAM("num of samples after down sample: " << cloud_downsampled->size());
   return true;
@@ -422,13 +415,14 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
     std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
 
     PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
-    for (size_t j = 0; clusters[0].indices.size(); ++j){
-    	int indice = clusters[0].indices[j];
-    	if(indice == 0 || indice > cloud_filtered->width) continue;
-    	else {
-    		cout << "indice is " << indice << endl;
-    		    	cloud_cluster->points.push_back(cloud_filtered->points[indice]);
-    	}
+    for (size_t j = 0; clusters[0].indices.size(); ++j) {
+      int indice = clusters[0].indices[j];
+      if (indice == 0 || indice > cloud_filtered->width)
+        continue;
+      else {
+        cout << "indice is " << indice << endl;
+        cloud_cluster->points.push_back(cloud_filtered->points[indice]);
+      }
     }
 
     cloud_cluster->width = cloud_cluster->points.size();
@@ -471,31 +465,39 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
   reg.extract(clusters);
 
   if (clusters.size() > 0) {
-    PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
     std::cout << "Number of clusters is equal to " << clusters.size() << std::endl;
+    std::cout << "First cluster has " << clusters[0].indices.size() << " points." << endl;
+    std::cout << "These are the indices of the points of the initial" << std::endl << "cloud that belong to the first cluster:" << std::endl;
 
-    PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
-    for (size_t j = 0; clusters[0].indices.size(); ++j){
-    	int indice = clusters[0].indices[j];
-    	if(indice == 0 || indice > cloud_filtered->width) continue;
-    	else {
-    		cout << "indice is " << indice << endl;
-    		    	cloud_cluster->points.push_back(cloud_filtered->points[indice]);
-    	}
+    int counter = 0;
+    while (counter < clusters[0].indices.size()) {
+      std::cout << clusters[0].indices[counter] << ", ";
+      counter++;
+      if (counter % 10 == 0)
+        std::cout << std::endl;
     }
+    std::cout << std::endl;
 
-    cloud_cluster->width = cloud_cluster->points.size();
-    cloud_cluster->height = 1;
-    cloud_cluster->is_dense = true;
-    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
-    return true;
+    PointCloud<PointType>::Ptr cloud_filtered = reg.getColoredCloud();
+    int j = 0;
+    for (std::vector<PointIndices>::const_iterator it = clusters.begin(); it != clusters.end(); ++it) {
+      PointCloud<PointType>::Ptr cloud_cluster(new PointCloud<PointType>);
+      for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit)
+        cloud_cluster->points.push_back(cloud_filtered->points[*pit]);
+      cloud_cluster->width = cloud_cluster->points.size();
+      cloud_cluster->height = 1;
+      cloud_cluster->is_dense = true;
+
+      std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
+      std::string path = save_path_ + "/RGBregiongrow" + std::to_string(j) + ".pcd";
+      io::savePCDFile(path, *cloud_cluster);
+      j++;
+    }
   } else {
     ROS_ERROR("region growing didn't find cluster");
     return false;
   }
-
 }
-
 
 bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals)
 {
@@ -513,10 +515,10 @@ bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr 
   PolygonMesh mesh;
   poisson.reconstruct(mesh);
 //  save_path_ = ros::package::getPath("urdf_models") + "/models/" + model_name;
-  std::string path = save_path_+ "/poisson.ply";
+  std::string path = save_path_ + "/poisson.ply";
   io::savePLYFile(path, mesh);
 
-    return true;
+  return true;
 }
 
 std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals)
@@ -571,14 +573,13 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 //  cloud.header.frame_id = world_frame_;
   PointCloud<PointType> new_cloud;
   fromROSMsg(cloud, new_cloud);
-  if(point_cloud_topic_ != "/kinect2/sd/points"){
-  Eigen::Affine3f matrix = Eigen::Affine3f::Identity() * Eigen::Scaling(Eigen::Vector3f(0.5, 0.5, 0.5)); // or //  Eigen::UniformScaling(0.5);
-  Eigen::Matrix4f& m_ = matrix.matrix();
-  PointCloud<PointType>::Ptr could_scaled (new PointCloud<PointType>());
-  transformPointCloud(new_cloud, *could_scaled, m_);
-  cloud_vector_.push_back(*could_scaled);
-  }
-  else {
+  if (point_cloud_topic_ != "/kinect2/sd/points") {
+    Eigen::Affine3f matrix = Eigen::Affine3f::Identity() * Eigen::Scaling(Eigen::Vector3f(0.5, 0.5, 0.5));  // or //  Eigen::UniformScaling(0.5);
+    Eigen::Matrix4f& m_ = matrix.matrix();
+    PointCloud<PointType>::Ptr could_scaled(new PointCloud<PointType>());
+    transformPointCloud(new_cloud, *could_scaled, m_);
+    cloud_vector_.push_back(*could_scaled);
+  } else {
     cloud_vector_.push_back(new_cloud);
   }
 }
