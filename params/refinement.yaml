@@ -1,4 +1,4 @@
-leaf_size: 0.03
+leaf_size: 0.0025
 model_folder: ""
 number_of_average_clouds: 1
 number_of_median_clouds: 1

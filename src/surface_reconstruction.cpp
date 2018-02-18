@@ -130,77 +130,97 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 //  printf("test: %" PRIu8 "\n", collision_check);
 }
 
-bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, DetectObject::Response &resp)
-{
+bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, DetectObject::Response &resp) {
 
-  std::string model_name = req.models_to_detect[0].data;
-  std::cout << "service called! " << model_name << std::endl;
-  save_path_ = ros::package::getPath(save_package_) + "/models/" + model_name;
-  std::cout << "save path is updated: " << save_path_ << std::endl;
+	std::string model_name = req.models_to_detect[0].data;
+	std::cout << "service called! " << model_name << std::endl;
+	save_path_ = ros::package::getPath(save_package_) + "/models/" + model_name;
+	std::cout << "save path is updated: " << save_path_ << std::endl;
 
+	PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
+	PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
+	PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
+	PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
+	PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
+	PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene(new PointCloud<ReferenceFrame>);
+	PointCloud<PointType>::Ptr cloud_transformed(new PointCloud<PointType>);
 
-  PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
-  PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
-  PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
-  PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
-  PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
-  PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene(new PointCloud<ReferenceFrame>);
+	// loadPCD or pcd
+	if (use_saved_pc_) {
+		std::string file_name = save_path_ + "/pcd/Preprocessed_0.pcd";
+		if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)
+			PCL_ERROR("Couldn't read pcd file \n");
+	} else {
 
+		// Sample clouds
+		ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
+		ros::Rate r(60);
+		std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
 
-  // loadPCD or pcd
-  if (use_saved_pc_) {
-    std::string file_name = save_path_ + "/pcd/Preprocessed_0.pcd";
-    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)
-      PCL_ERROR("Couldn't read pcd file \n");
-  } else {
+		while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
+			//    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
+			ros::spinOnce();
+			r.sleep();
+		}
+		std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
+		std::string path;
+		if (save_clouds_) {
+			path = save_path_ + "/cloud_raw.ply";
+			io::savePLYFile(path, cloud_vector_[0]);
+		}
 
-    // Sample clouds
-     ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
-     ros::Rate r(60);
-     std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
+		preprocess(cloud_ptr);
 
-     while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
-       //    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
-       ros::spinOnce();
-       r.sleep();
-     }
-     std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
-     std::string path;
-     if (save_clouds_) {
-       path = save_path_ + "/cloud_raw.ply";
-       io::savePLYFile(path, cloud_vector_[0]);
-     }
-     preprocess(cloud_ptr);
-     DownSample(cloud_ptr);
-  }
+		ROS_INFO("reorient_cloud");
+		const ros::Time time = ros::Time::now();
+        tf::StampedTransform transform;
+		try {
+			const ros::Duration timeout(1);
+			const ros::Duration polling_sleep_duration(4);
+			std::string* error_msg = NULL;
+			tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
+            tf_listener_.lookupTransform(world_frame_, camera_frame_, ros::Time(0), transform);
+            ROS_INFO_STREAM("camera to world: " << transform.getRotation());
+		} catch (tf2::TransformException &ex) {
+			ROS_WARN("%s", ex.what());
+			ros::Duration(1.0).sleep();
+		}
+//        tf_listener_.transformPose(world_frame_, model_camera_pose, model_pose);
+		Eigen::Quaternionf camera_quat(0, 0.707, 0.707, 0); // w, x, y, z
+		Eigen::Vector3f camera_pos(0.37, 0.08, 0.917);
 
-  // keypoints are not working with matching...
+		Eigen::Affine3f matrix;
+		matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+		Eigen::Matrix4f& m_ = matrix.matrix();
+		transformPointCloud(*cloud_ptr, *cloud_transformed, m_.inverse());
+
+		DownSample(cloud_transformed);
+	}
+
+	// keypoints are not working with matching...
 //  if (compute_keypoints_) {
 //    computeKeypoints(cloud_ptr, keypoint_model_ptr);
 //    path = save_path_ + "/Keypoints_0.ply";
 //    io::savePLYFile(path, *keypoint_model_ptr);
 //  }
 
-  computeNormals(cloud_ptr, cloud_normals);
+	computeNormals(cloud_transformed, cloud_normals);
 
-  reorientModel(cloud_ptr, cloud_normals);
+//	reorientModel(cloud_transformed, cloud_normals);
 
-  computeNormals(cloud_ptr, cloud_normals);
+	computeFPFHDescriptor(cloud_transformed, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
 
-  computeFPFHDescriptor(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
+	computeFPFHLRFs(cloud_transformed, keypoint_model_ptr, cloud_normals, FPFH_LRF_scene);
 
-  computeFPFHLRFs(cloud_ptr, keypoint_model_ptr, cloud_normals, FPFH_LRF_scene);
+	// region growing
+	copyPointCloud(*cloud_transformed, *cloud_ptr_xyz);
+	std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+	regionGrowing(cloud_ptr_xyz, cloud_normals);
+	regionGrowingRGB(cloud_transformed, cloud_normals);
 
+	std::cout << "service done!" << std::endl;
 
-  // region growing
-  copyPointCloud(*cloud_ptr, *cloud_ptr_xyz);
-  std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-  regionGrowing(cloud_ptr_xyz, cloud_normals);
-  regionGrowingRGB(cloud_ptr, cloud_normals);
-
-  std::cout << "service done!" << std::endl;
-
-  return true;
+	return true;
 }
 
 bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_)
@@ -209,29 +229,29 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 	ROS_INFO("reorient_cloud");
 
 	PointCloud<PointType>::Ptr cloud_transformed(new PointCloud<PointType>);
-
-	const ros::Time time = ros::Time::now();
-	Eigen::Quaternionf camera_quat(0, -1.0 , 0, 0);
-	Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
-
-	Eigen::Affine3f matrix;
-	matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-	Eigen::Matrix4f& m_ = matrix.matrix();
-	tf::StampedTransform transform;
-	transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
-
-	try {
-		tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
-		ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
-		transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
-
-	} catch (tf2::TransformException &ex) {
-		ROS_WARN("%s", ex.what());
-		ros::Duration(1.0).sleep();
-	}
-
 	std::string path = save_path_ + "/cloud_transformed.ply";
-	io::savePLYFile(path, *cloud_transformed);
+
+//	const ros::Time time = ros::Time::now();
+//	Eigen::Quaternionf camera_quat(0, -1.0 , 0, 0);
+//	Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
+//
+//	Eigen::Affine3f matrix;
+//	matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+//	Eigen::Matrix4f& m_ = matrix.matrix();
+//	tf::StampedTransform transform;
+//	transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
+//
+//	try {
+//		tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
+//		ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
+//		transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
+//
+//	} catch (tf2::TransformException &ex) {
+//		ROS_WARN("%s", ex.what());
+//		ros::Duration(1.0).sleep();
+//	}
+
+//	io::savePLYFile(path, *cloud_transformed);
 	cloud_ptr_ = cloud_transformed;
 
 	// projection
