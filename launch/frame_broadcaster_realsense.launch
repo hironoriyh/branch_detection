@@ -3,7 +3,14 @@
 		args = "0.37 0.08 0.917
 0.707 0 -0.707 0
 		world camera_link 10"/>
+		
+	<node type="static_transform_publisher" pkg="tf" name="object_frame_broadcaster"
+		args = "0.37 0.08 0.33 0 0 0 1
+		world object_frame 10"/>
 </launch>
+
+
+
 
 		<!-- -0.04220875 -0.055796  0.69007 0.72034563 -->
 

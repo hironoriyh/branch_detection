@@ -50,6 +50,7 @@
 #include <pcl/common/centroid.h>
 #include <pcl/filters/project_inliers.h>
 
+//#include <tf/transform_listener.h>
 //using namespace point_cloud_filtering;
 
 namespace surface_reconstruction_srv {
@@ -96,7 +97,7 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 
   nodeHandle.getParam("/surface_reconstruction_service/compute_keypoints", compute_keypoints_);
 
-  nodeHandle.getParam("/surface_reconstruction_service/world_frame", world_frame_);
+  nodeHandle.getParam("/surface_reconstruction_service/object_frame", object_frame_);
   nodeHandle.getParam("/surface_reconstruction_service/camera_frame", camera_frame_);
 
   bound_vec_.push_back(xmin_);
@@ -178,21 +179,20 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 			const ros::Duration timeout(1);
 			const ros::Duration polling_sleep_duration(4);
 			std::string* error_msg = NULL;
-			tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
-            tf_listener_.lookupTransform(world_frame_, camera_frame_, ros::Time(0), transform);
+			tf_listener_.waitForTransform(object_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
+            tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
             ROS_INFO_STREAM("camera to world: " << transform.getRotation());
 		} catch (tf2::TransformException &ex) {
 			ROS_WARN("%s", ex.what());
 			ros::Duration(1.0).sleep();
 		}
-//        tf_listener_.transformPose(world_frame_, model_camera_pose, model_pose);
-		Eigen::Quaternionf camera_quat(0, 0.707, 0.707, 0); // w, x, y, z
-		Eigen::Vector3f camera_pos(0.37, 0.08, 0.917);
-
+		Eigen::Quaternionf camera_quat(transform.getRotation().getW(), transform.getRotation().getX(),
+				transform.getRotation().getY(), transform.getRotation().getZ()); // w, x, y, z
+		Eigen::Vector3f camera_pos(transform.getOrigin().getX(), transform.getOrigin().getY(), transform.getOrigin().getZ());
 		Eigen::Affine3f matrix;
 		matrix = Eigen::Translation3f(camera_pos) * camera_quat;
 		Eigen::Matrix4f& m_ = matrix.matrix();
-		transformPointCloud(*cloud_ptr, *cloud_transformed, m_.inverse());
+		transformPointCloud(*cloud_ptr, *cloud_transformed, m_);
 
 		DownSample(cloud_transformed);
 	}
@@ -205,6 +205,15 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 //  }
 
 	computeNormals(cloud_transformed, cloud_normals);
+
+//	ROS_INFO_STREAM("normal size: " << cloud_normals->size());
+//	for (int i = 0; i < cloud_normals->size(); i++) {
+//		//    ROS_INFO_STREAM("before: " << normals_->at(i).normal_x);
+//		cloud_normals->at(i).normal_x *= -1.0;
+//		cloud_normals->at(i).normal_y *= -1.0;
+//		cloud_normals->at(i).normal_z *= -1.0;
+//		//    ROS_INFO_STREAM("after: " << normals_->at(i).normal_x);
+//	}
 
 //	reorientModel(cloud_transformed, cloud_normals);
 
@@ -609,7 +618,6 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 
   PointCloud<PointType> new_cloud, could_transformed;
   fromROSMsg(cloud, new_cloud);
-
 //  const ros::Time time = ros::Time::now();
 //  Eigen::Quaternionf camera_quat(0, 0.707, 0, -0.707);
 //  Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);

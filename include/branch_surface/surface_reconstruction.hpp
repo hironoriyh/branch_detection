@@ -134,7 +134,7 @@ private:
 
 
   tf::TransformListener tf_listener_;
-  std::string world_frame_;
+  std::string object_frame_;
   std::string camera_frame_;
 
 	int grid_res_;
