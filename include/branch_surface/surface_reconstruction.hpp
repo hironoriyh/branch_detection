@@ -66,7 +66,9 @@ private:
 	std::shared_ptr<visualization::PCLVisualizer> rgbVis(PointCloud<PointType>::ConstPtr cloud);
 	std::shared_ptr<visualization::PCLVisualizer> xyzVis(PointCloud<PointXYZ>::ConstPtr cloud);
 
-private:
+	std::shared_ptr<visualization::PCLVisualizer> normalsVis (
+	    const PointCloud<PointType>::ConstPtr &cloud, PointCloud<Normal>::Ptr &normals);
+
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
 
 	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_);

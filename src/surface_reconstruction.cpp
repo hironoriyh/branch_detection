@@ -171,29 +171,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 		}
 
 		preprocess(cloud_ptr);
-
-		ROS_INFO("reorient_cloud");
-		const ros::Time time = ros::Time::now();
-        tf::StampedTransform transform;
-		try {
-			const ros::Duration timeout(1);
-			const ros::Duration polling_sleep_duration(4);
-			std::string* error_msg = NULL;
-			tf_listener_.waitForTransform(object_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
-            tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
-            ROS_INFO_STREAM("camera to world: " << transform.getRotation());
-		} catch (tf2::TransformException &ex) {
-			ROS_WARN("%s", ex.what());
-			ros::Duration(1.0).sleep();
-		}
-		Eigen::Quaternionf camera_quat(transform.getRotation().getW(), transform.getRotation().getX(),
-				transform.getRotation().getY(), transform.getRotation().getZ()); // w, x, y, z
-		Eigen::Vector3f camera_pos(transform.getOrigin().getX(), transform.getOrigin().getY(), transform.getOrigin().getZ());
-		Eigen::Affine3f matrix;
-		matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-		Eigen::Matrix4f& m_ = matrix.matrix();
-		transformPointCloud(*cloud_ptr, *cloud_transformed, m_);
-
+		cloud_transformed = cloud_ptr;
 		DownSample(cloud_transformed);
 	}
 
@@ -240,27 +218,27 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 	PointCloud<PointType>::Ptr cloud_transformed(new PointCloud<PointType>);
 	std::string path = save_path_ + "/cloud_transformed.ply";
 
-//	const ros::Time time = ros::Time::now();
-//	Eigen::Quaternionf camera_quat(0, -1.0 , 0, 0);
-//	Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
-//
-//	Eigen::Affine3f matrix;
-//	matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-//	Eigen::Matrix4f& m_ = matrix.matrix();
-//	tf::StampedTransform transform;
-//	transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
-//
-//	try {
-//		tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
-//		ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
-//		transformPointCloud(*cloud_ptr_, *cloud_transformed, m_.inverse());
-//
-//	} catch (tf2::TransformException &ex) {
-//		ROS_WARN("%s", ex.what());
-//		ros::Duration(1.0).sleep();
-//	}
-
-//	io::savePLYFile(path, *cloud_transformed);
+	ROS_INFO("reorient_cloud");
+	const ros::Time time = ros::Time::now();
+    tf::StampedTransform transform;
+	try {
+		const ros::Duration timeout(1);
+		const ros::Duration polling_sleep_duration(4);
+		std::string* error_msg = NULL;
+		tf_listener_.waitForTransform(object_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
+        tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
+        ROS_INFO_STREAM("camera to world: " << transform.getRotation());
+	} catch (tf2::TransformException &ex) {
+		ROS_WARN("%s", ex.what());
+		ros::Duration(1.0).sleep();
+	}
+	Eigen::Quaternionf camera_quat(transform.getRotation().getW(), transform.getRotation().getX(),
+			transform.getRotation().getY(), transform.getRotation().getZ()); // w, x, y, z
+	Eigen::Vector3f camera_pos(transform.getOrigin().getX(), transform.getOrigin().getY(), transform.getOrigin().getZ());
+	Eigen::Affine3f matrix;
+	matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+	Eigen::Matrix4f& m_ = matrix.matrix();
+	transformPointCloud(*cloud_ptr_, *cloud_transformed, m_);
 	cloud_ptr_ = cloud_transformed;
 
 	// projection
@@ -268,7 +246,7 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
 	coefficients->values.resize(4);
 	coefficients->values[0] = coefficients->values[1] = 0;
-	coefficients->values[2] = 1.0;
+	coefficients->values[2] = 1;
 	coefficients->values[3] = 0;
 
 	ProjectInliers<PointType> proj;
@@ -353,6 +331,27 @@ bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::Const
   n.setSearchMethod(tree);
   n.setRadiusSearch(0.01);
   n.compute(*normals_);
+
+
+  ROS_INFO_STREAM("normal size: " << normals_->size());
+  for(int i =0; i < normals_->size(); i++){
+//    ROS_INFO_STREAM("before: " << normals_->at(i).normal_x);
+    normals_->at(i).normal_x *= -1.0;
+    normals_->at(i).normal_y *= -1.0;
+    normals_->at(i).normal_z *= -1.0;
+//    ROS_INFO_STREAM("after: " << normals_->at(i).normal_x);
+  }
+
+  //visualization
+  std::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+  viewer = normalsVis(cloud_, normals_);
+  while (!viewer->wasStopped ())
+  {
+    viewer->spinOnce (100);
+    boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+  }
+
+
   return true;
 }
 
@@ -607,6 +606,26 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::xyzVis(P
   viewer->addCoordinateSystem(0.1, "sample cloud");
   viewer->setCameraPosition(0, 0, 0.0, 0.0, 0.0, 0.0, 0.1);
   viewer->initCameraParameters();
+  return (viewer);
+}
+
+std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis (
+    const PointCloud<PointType>::ConstPtr &cloud, PointCloud<Normal>::Ptr &normals)
+{
+  // --------------------------------------------------------
+  // -----Open 3D viewer and add point cloud and normals-----
+  // --------------------------------------------------------
+  std::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  viewer->setBackgroundColor (0, 0, 0);
+//  pcl::visualization::PointCloudColorHandlerRGBField<PointType> rgb(cloud);
+  pcl::visualization::PointCloudColorHandlerCustom<PointType>
+     rgb_color(cloud, 255, 0, 0);
+  viewer->addPointCloud<PointType> (cloud, rgb_color, "sample cloud");
+  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+
+  viewer->addPointCloudNormals<PointType, pcl::Normal> (cloud, normals, 10, 0.05, "normals");
+  viewer->addCoordinateSystem (0.1);
+  viewer->initCameraParameters ();
   return (viewer);
 }
 
