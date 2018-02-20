@@ -1,11 +1,11 @@
 <launch>
 	<node type="static_transform_publisher" pkg="tf" name="sr300_link_broadcaster"
-		args = "0.37 0.08 0.917
+		args = "0.37 0.08 0.65
 0.707 0 -0.707 0
 		world camera_link 10"/>
 		
 	<node type="static_transform_publisher" pkg="tf" name="object_frame_broadcaster"
-		args = "0.37 0.08 0.33 0 0 0 1
+		args = "0.37 0.08 0.0 0 0 0 1
 		world object_frame 10"/>
 </launch>
 

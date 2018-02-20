@@ -71,7 +71,7 @@ private:
 
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
 
-	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_);
+	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_);
 
 	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr);
 
@@ -96,6 +96,9 @@ private:
 	ros::NodeHandle nodeHandle_;
 
 	ros::Subscriber cameraPoseStateSubscriber_;
+
+	ros::Publisher camera_pose_pub_;
+
 
 	geometry_msgs::PoseStamped camera_pose_;
 

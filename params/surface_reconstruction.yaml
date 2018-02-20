@@ -33,7 +33,7 @@ use_saved_pc: false
 full_display: true
 use_all_points: true 
 save_clouds: true
-normal_flip: false
+normal_flip: true
 reorient_cloud: true
 
 package_path: branch_surface

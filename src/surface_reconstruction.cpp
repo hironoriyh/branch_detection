@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <Eigen/Geometry>
+#include <eigen_conversions/eigen_msg.h>
 
 // ros
 #include <ros/ros.h>
@@ -112,6 +113,7 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 
   ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
   cameraPoseStateSubscriber_ = nodeHandle_.subscribe<geometry_msgs::PoseStamped>("/aruco/pose", 1, &SurfaceReconstructionSrv::CameraPoseCallback, this);
+  camera_pose_pub_ = nodeHandle_.advertise<geometry_msgs::PoseStamped>("/camera_pose", 1, true);
 
   ROS_INFO("Ready to define surface.");
   ros::spin();
@@ -128,10 +130,30 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
   camera_pose_.pose.position.y *= 0.01;
   camera_pose_.pose.position.z *= 0.01;
 
-//  ROS_INFO_STREAM(hand_state_.collision);
-//  uint8_t collision_check = 1;
-//  printf("msg: %" PRIu8 "\n", hand_state_.collision);
-//  printf("test: %" PRIu8 "\n", collision_check);
+  const ros::Time time = ros::Time::now();
+	Eigen::Quaterniond camera_quat(0, 0.707, 0.707, 0);
+	Eigen::Vector3d camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
+	Eigen::Quaterniond aruco_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
+
+	Eigen::Isometry3d matrix = Eigen::Translation3d(camera_pos) * camera_quat * aruco_quat;
+	Eigen::Matrix4d& m_ = matrix.matrix();
+	geometry_msgs::PoseStamped camera_pose_2;
+	camera_pose_2 = camera_pose_;
+	camera_pose_2.header.frame_id = object_frame_;
+	geometry_msgs::Pose pose_only;
+	Eigen::Quaterniond quat (matrix.rotation());
+
+	pose_only.position.x = m_.col(3)[0];
+	pose_only.position.y = m_.col(3)[1];
+	pose_only.position.z = m_.col(3)[2];
+	pose_only.orientation.x = quat.x();
+	pose_only.orientation.y = quat.y();
+	pose_only.orientation.z = quat.z();
+	pose_only.orientation.w = quat.w();
+//	tf::poseEigenToMsg(matrix, pose_only); // somehow didn't work
+	camera_pose_2.pose = pose_only;
+	camera_pose_pub_.publish(camera_pose_2);
+
 }
 
 bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, DetectObject::Response &resp) {
@@ -174,7 +196,8 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 		}
 
 		preprocess(cloud_ptr);
-		*cloud_transformed = *cloud_ptr;
+		if(reorient_cloud_) reorientModel(cloud_ptr, cloud_transformed);
+		else  *cloud_transformed = *cloud_ptr;
 		DownSample(cloud_transformed);
 	}
 
@@ -183,8 +206,6 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	else *keypoint_cloud_ptr = *cloud_transformed;
 
 	computeNormals(keypoint_cloud_ptr, cloud_normals);
-
-	if(reorient_cloud_) reorientModel(keypoint_cloud_ptr, cloud_normals);
 
 	computeFPFHDescriptor(cloud_transformed, keypoint_cloud_ptr, cloud_normals, FPFH_signature_scene);
 
@@ -201,12 +222,11 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	return true;
 }
 
-bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_)
+bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_)
 {
 
 	ROS_INFO("reorient_cloud");
 
-	PointCloud<PointType>::Ptr cloud_transformed(new PointCloud<PointType>);
 	std::string path = save_path_ + "/cloud_transformed.ply";
 
 	ROS_INFO("reorient_cloud");
@@ -218,7 +238,8 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 		std::string* error_msg = NULL;
 		tf_listener_.waitForTransform(object_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
         tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
-        ROS_INFO_STREAM("camera to world: " << transform.getRotation());
+        ROS_INFO_STREAM("camera to world: " << transform.getRotation().getX() << " , " << transform.getRotation().getY()
+        									<< " , " << transform.getRotation().getZ() << " , " << transform.getRotation().getW());
 	} catch (tf2::TransformException &ex) {
 		ROS_WARN("%s", ex.what());
 		ros::Duration(1.0).sleep();
@@ -230,8 +251,7 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 	Eigen::Affine3f matrix;
 	matrix = Eigen::Translation3f(camera_pos) * camera_quat;
 	Eigen::Matrix4f& m_ = matrix.matrix();
-	transformPointCloud(*cloud_ptr_, *cloud_transformed, m_);
-	cloud_ptr_ = cloud_transformed;
+	transformPointCloud(*cloud_ptr_, *cloud_transformed_, m_);
 
 	return true;
 }
@@ -309,7 +329,7 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
   sor.setInputCloud(cloud_);
   sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
   sor.filter(*cloud_downsampled);
-
+  *cloud_ = *cloud_downsampled;
   std::string path = save_path_ + "/Downsampled_0.ply";
   io::savePLYFile(path, *cloud_downsampled);
 
@@ -339,9 +359,11 @@ bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::Const
   if(normal_flip_){
 	  for(int i =0; i < normals_->size(); i++){
 	//    ROS_INFO_STREAM("before: " << normals_->at(i).normal_x);
-		normals_->at(i).normal_x *= -1.0;
-		normals_->at(i).normal_y *= -1.0;
-		normals_->at(i).normal_z *= -1.0;
+		  if(normals_->at(i).normal_z  < 0){
+				normals_->at(i).normal_x *= -1.0;
+				normals_->at(i).normal_y *= -1.0;
+				normals_->at(i).normal_z *= -1.0;
+		  }
 	//    ROS_INFO_STREAM("after: " << normals_->at(i).normal_x);
   	  }
   }
@@ -349,12 +371,13 @@ bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::Const
   //visualization
   std::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
   viewer = normalsVis(cloud_, normals_);
-  while (!viewer->wasStopped ())
+  ros::Rate r(40);
+  while (!viewer->wasStopped())
   {
-    viewer->spinOnce (100);
-    boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+    viewer->spinOnce ();
+    r.sleep();
   }
-
+  std::cout<<"Stopped the Viewer"<<std::endl;
 
   return true;
 }

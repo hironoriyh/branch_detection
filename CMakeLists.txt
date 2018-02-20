@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(PCL REQUIRED)
+#find_package(EIGEN REQUIRED)
 
 add_service_files(
   FILES
