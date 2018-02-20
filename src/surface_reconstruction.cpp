@@ -95,10 +95,13 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   nodeHandle.getParam("/surface_reconstruction_service/save_path", save_path_);
   nodeHandle.getParam("/surface_reconstruction_service/save_package", save_package_);
 
-  nodeHandle.getParam("/surface_reconstruction_service/compute_keypoints", compute_keypoints_);
+  nodeHandle.getParam("/surface_reconstruction_service/use_all_points", use_all_points_);
 
   nodeHandle.getParam("/surface_reconstruction_service/object_frame", object_frame_);
   nodeHandle.getParam("/surface_reconstruction_service/camera_frame", camera_frame_);
+  nodeHandle.getParam("/surface_reconstruction_service/normal_flip", normal_flip_);
+  nodeHandle.getParam("/surface_reconstruction_service/reorient_cloud", reorient_cloud_);
+
 
   bound_vec_.push_back(xmin_);
   bound_vec_.push_back(xmax_);
@@ -141,7 +144,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
 	PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
 	PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
-	PointCloud<PointType>::Ptr keypoint_model_ptr = cloud_ptr;
+	PointCloud<PointType>::Ptr keypoint_cloud_ptr (new PointCloud<PointType>);
 	PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
 	PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene(new PointCloud<ReferenceFrame>);
 	PointCloud<PointType>::Ptr cloud_transformed(new PointCloud<PointType>);
@@ -171,39 +174,27 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 		}
 
 		preprocess(cloud_ptr);
-		cloud_transformed = cloud_ptr;
+		*cloud_transformed = *cloud_ptr;
 		DownSample(cloud_transformed);
 	}
 
 	// keypoints are not working with matching...
-//  if (compute_keypoints_) {
-//    computeKeypoints(cloud_ptr, keypoint_model_ptr);
-//    path = save_path_ + "/Keypoints_0.ply";
-//    io::savePLYFile(path, *keypoint_model_ptr);
-//  }
+	if (!use_all_points_)  computeKeypoints(cloud_transformed, keypoint_cloud_ptr);
+	else *keypoint_cloud_ptr = *cloud_transformed;
 
-	computeNormals(cloud_transformed, cloud_normals);
+	computeNormals(keypoint_cloud_ptr, cloud_normals);
 
-//	ROS_INFO_STREAM("normal size: " << cloud_normals->size());
-//	for (int i = 0; i < cloud_normals->size(); i++) {
-//		//    ROS_INFO_STREAM("before: " << normals_->at(i).normal_x);
-//		cloud_normals->at(i).normal_x *= -1.0;
-//		cloud_normals->at(i).normal_y *= -1.0;
-//		cloud_normals->at(i).normal_z *= -1.0;
-//		//    ROS_INFO_STREAM("after: " << normals_->at(i).normal_x);
-//	}
+	if(reorient_cloud_) reorientModel(keypoint_cloud_ptr, cloud_normals);
 
-//	reorientModel(cloud_transformed, cloud_normals);
+	computeFPFHDescriptor(cloud_transformed, keypoint_cloud_ptr, cloud_normals, FPFH_signature_scene);
 
-	computeFPFHDescriptor(cloud_transformed, keypoint_model_ptr, cloud_normals, FPFH_signature_scene);
-
-	computeFPFHLRFs(cloud_transformed, keypoint_model_ptr, cloud_normals, FPFH_LRF_scene);
+	computeFPFHLRFs(cloud_transformed, keypoint_cloud_ptr, cloud_normals, FPFH_LRF_scene);
 
 	// region growing
-	copyPointCloud(*cloud_transformed, *cloud_ptr_xyz);
+	copyPointCloud(*keypoint_cloud_ptr, *cloud_ptr_xyz);
 	std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
 	regionGrowing(cloud_ptr_xyz, cloud_normals);
-	regionGrowingRGB(cloud_transformed, cloud_normals);
+	regionGrowingRGB(keypoint_cloud_ptr, cloud_normals);
 
 	std::cout << "service done!" << std::endl;
 
@@ -232,6 +223,7 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 		ROS_WARN("%s", ex.what());
 		ros::Duration(1.0).sleep();
 	}
+
 	Eigen::Quaternionf camera_quat(transform.getRotation().getW(), transform.getRotation().getX(),
 			transform.getRotation().getY(), transform.getRotation().getZ()); // w, x, y, z
 	Eigen::Vector3f camera_pos(transform.getOrigin().getX(), transform.getOrigin().getY(), transform.getOrigin().getZ());
@@ -241,6 +233,10 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 	transformPointCloud(*cloud_ptr_, *cloud_transformed, m_);
 	cloud_ptr_ = cloud_transformed;
 
+	return true;
+}
+
+bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr){
 	// projection
 	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
@@ -251,27 +247,30 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 
 	ProjectInliers<PointType> proj;
 	proj.setModelType(pcl::SACMODEL_PLANE);
-	proj.setInputCloud(cloud_transformed);
+	proj.setInputCloud(cloud_ptr);
 	proj.setModelCoefficients(coefficients);
 	proj.filter(*cloud_projected);
-	path = save_path_ + "/projected.ply";
+	std::string path = save_path_ + "/projected.ply";
 	io::savePLYFile(path, *cloud_projected);
 
 	// concatination
 	PointCloud<PointType>::Ptr cloud_combined(new PointCloud<PointType>());
-	cloud_combined = cloud_transformed;
+	cloud_combined = cloud_ptr;
 	*cloud_combined += *cloud_projected;
 	path = save_path_ + "/combined.ply";
 	io::savePLYFile(path, *cloud_combined);
 
+	PointCloud<Normal>::Ptr cloud_normals_(new PointCloud<Normal>());
+	PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
+
 	std::cout << "combine points and normals" << std::endl;
 	computeNormals(cloud_combined, cloud_normals_);
-	PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
 	concatenateFields(*cloud_combined, *cloud_normals_, *cloud_smoothed_normals);
 	poisson(cloud_smoothed_normals);
 
 	return true;
 }
+
 
 bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
 {
@@ -313,10 +312,13 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
 
   std::string path = save_path_ + "/Downsampled_0.ply";
   io::savePLYFile(path, *cloud_downsampled);
+
   path = save_path_ + "/Keypoints_0.pcd";  // same as Downsampled.ply
   io::savePCDFile(path, *cloud_downsampled);
+
   path = save_path_ + "/Preprocessed_0.pcd";  // same as Downsampled.ply
   io::savePCDFile(path, *cloud_downsampled);
+
   ROS_INFO_STREAM("num of samples after down sample: " << cloud_downsampled->size());
   return true;
 }
@@ -334,12 +336,14 @@ bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::Const
 
 
   ROS_INFO_STREAM("normal size: " << normals_->size());
-  for(int i =0; i < normals_->size(); i++){
-//    ROS_INFO_STREAM("before: " << normals_->at(i).normal_x);
-    normals_->at(i).normal_x *= -1.0;
-    normals_->at(i).normal_y *= -1.0;
-    normals_->at(i).normal_z *= -1.0;
-//    ROS_INFO_STREAM("after: " << normals_->at(i).normal_x);
+  if(normal_flip_){
+	  for(int i =0; i < normals_->size(); i++){
+	//    ROS_INFO_STREAM("before: " << normals_->at(i).normal_x);
+		normals_->at(i).normal_x *= -1.0;
+		normals_->at(i).normal_y *= -1.0;
+		normals_->at(i).normal_z *= -1.0;
+	//    ROS_INFO_STREAM("after: " << normals_->at(i).normal_x);
+  	  }
   }
 
   //visualization
@@ -379,12 +383,15 @@ bool SurfaceReconstructionSrv::computeKeypoints(const PointCloud<PointType>::Con
 //  ROS_INFO_STREAM("output size: " << keypoint_model_ptr_->size());
 
   std::cout << "size of the input file points: " << keypoint_model_ptr_->size() << std::endl;
-
+  std::string path = save_path_ + "/Keypoints_0.ply";
+  io::savePLYFile(path, *keypoint_model_ptr_);
   return true;
 }
 
-bool SurfaceReconstructionSrv::computeFPFHDescriptor(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_,
-                                                     PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_)
+bool SurfaceReconstructionSrv::computeFPFHDescriptor(const 	PointCloud<PointType>::ConstPtr &cloud_,
+															PointCloud<PointType>::Ptr &keypoint_model_ptr_,
+															PointCloud<Normal>::Ptr &normals_,
+															PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_)
 {
   FPFHEstimation<PointType, Normal, FPFHSignature33> fpfh;
   search::KdTree<PointType>::Ptr search_method(new search::KdTree<PointType>);
@@ -397,18 +404,20 @@ bool SurfaceReconstructionSrv::computeFPFHDescriptor(const PointCloud<PointType>
 
   fpfh.setSearchMethod(search_method);
   fpfh.setIndices(indices);
-//  fpfh.setInputCloud(keypoint_model_ptr_);
   fpfh.setInputCloud(keypoint_model_ptr_);
   fpfh.setSearchSurface(cloud_);
   fpfh.setInputNormals(normals_);
   fpfh.setRadiusSearch(0.02);  //FPFH_radius_
   fpfh.compute(*FPFH_signature_scene_);
+
   std::string path = save_path_ + "/Signature_0.ply";
   io::savePLYFile(path, *FPFH_signature_scene_);
   return true;
 }
 
-bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_,
+bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_,
+		PointCloud<PointType>::Ptr &keypoint_model_ptr_,
+		PointCloud<Normal>::Ptr &normals_,
                                                PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene_)
 {
   BOARDLocalReferenceFrameEstimation<PointType, Normal, ReferenceFrame> rf_est;

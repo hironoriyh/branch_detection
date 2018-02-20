@@ -73,6 +73,8 @@ private:
 
 	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<Normal>::Ptr cloud_normals_);
 
+	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr);
+
 	bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 
 	bool DownSample(PointCloud<PointType>::Ptr &cloud_);
@@ -129,8 +131,10 @@ private:
 	double zmax_;
 
 	bool use_saved_pc_;
-	bool compute_keypoints_;
+	bool use_all_points_;
 	bool save_clouds_;
+	bool normal_flip_;
+	bool reorient_cloud_;
 	std::string save_path_;
   std::string save_package_;
 

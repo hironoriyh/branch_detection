@@ -24,7 +24,8 @@ inlier_dist_validation: 0.0025
 
 full_display: false
 save_clouds: true
-save_package: "branch_surface"
+package_path: branch_surface
+use_all_points: false
 
 use_hough: false
 
