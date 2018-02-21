@@ -10,6 +10,8 @@
 #include <vector>
 #include <Eigen/Geometry>
 #include <eigen_conversions/eigen_msg.h>
+#include <tf/transform_broadcaster.h>
+//#include <tf/transform_listener.h>
 
 // ros
 #include <ros/ros.h>
@@ -50,9 +52,6 @@
 
 #include <pcl/common/centroid.h>
 #include <pcl/filters/project_inliers.h>
-
-//#include <tf/transform_listener.h>
-//using namespace point_cloud_filtering;
 
 namespace surface_reconstruction_srv {
 
@@ -125,24 +124,29 @@ SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
 
 void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
-  camera_pose_ = *msg;
-  camera_pose_.pose.position.x *= 0.01;
-  camera_pose_.pose.position.y *= 0.01;
-  camera_pose_.pose.position.z *= 0.01;
+	camera_pose_ = *msg;
+	camera_pose_.header.frame_id = object_frame_;
 
-  const ros::Time time = ros::Time::now();
-	Eigen::Quaterniond camera_quat(0, 0.707, 0.707, 0);
-	Eigen::Vector3d camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
+	camera_pose_.pose.position.x *= -0.01;
+	camera_pose_.pose.position.y *= -0.01;
+	camera_pose_.pose.position.z *= -0.01;
+
+	const ros::Time time = ros::Time::now();
+	Eigen::Quaterniond camera_quat(0, 1, 0, 0);
+	Eigen::Quaterniond camera_link_quat(0.5, -0.5, 0.5, -0.5);
 	Eigen::Quaterniond aruco_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
 
-	Eigen::Isometry3d matrix = Eigen::Translation3d(camera_pos) * camera_quat * aruco_quat;
+	Eigen::Vector3d camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
+
+	Eigen::Isometry3d matrix = Eigen::Translation3d(camera_pos) * camera_quat * aruco_quat * camera_link_quat.inverse();
 	Eigen::Matrix4d& m_ = matrix.matrix();
+
 	geometry_msgs::PoseStamped camera_pose_2;
 	camera_pose_2 = camera_pose_;
 	camera_pose_2.header.frame_id = object_frame_;
 	geometry_msgs::Pose pose_only;
-	Eigen::Quaterniond quat (matrix.rotation());
-
+	Eigen::Quaterniond quat(matrix.rotation());
+//	quat = quat.inverse();
 	pose_only.position.x = m_.col(3)[0];
 	pose_only.position.y = m_.col(3)[1];
 	pose_only.position.z = m_.col(3)[2];
@@ -152,6 +156,11 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 	pose_only.orientation.w = quat.w();
 //	tf::poseEigenToMsg(matrix, pose_only); // somehow didn't work
 	camera_pose_2.pose = pose_only;
+
+	static tf::TransformBroadcaster br;
+	tf::Transform transform;
+	tf::poseMsgToTF(camera_pose_2.pose, transform);
+	br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), object_frame_ , "camera_link"));
 	camera_pose_pub_.publish(camera_pose_2);
 
 }
