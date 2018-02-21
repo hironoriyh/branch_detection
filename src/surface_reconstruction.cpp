@@ -132,15 +132,13 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 	camera_pose_.pose.position.z *= -0.01;
 
 	const ros::Time time = ros::Time::now();
-	Eigen::Quaterniond opencv_to_ros(0, 1, 0, 0);
-	Eigen::Quaterniond link_to_rgb_optical_quat(0.5, -0.5, 0.5, -0.5);
-	Eigen::Quaterniond camera_to_marker(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
-	Eigen::Quaterniond marker_to_camera = camera_to_marker.inverse();
-	Eigen::Vector3d marker_to_camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
-	Eigen::Vector3d marker_to_link_pos = marker_to_camera_pos - Eigen::Vector3d(0.05, 0.005, 0);
-	Eigen::Quaterniond marker_to_link = marker_to_camera * link_to_rgb_optical_quat.inverse();
+	Eigen::Quaterniond camera_quat(0, 1, 0, 0);
+	Eigen::Quaterniond camera_link_quat(0.5, -0.5, 0.5, -0.5);
+	Eigen::Quaterniond aruco_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
 
-	Eigen::Isometry3d matrix = Eigen::Translation3d(marker_to_link_pos) * marker_to_link * opencv_to_ros;
+	Eigen::Vector3d camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
+
+	Eigen::Isometry3d matrix = Eigen::Translation3d(camera_pos) * camera_quat * aruco_quat * camera_link_quat.inverse();
 	Eigen::Matrix4d& m_ = matrix.matrix();
 
 	geometry_msgs::PoseStamped camera_pose_2;
@@ -162,7 +160,7 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 	static tf::TransformBroadcaster br;
 	tf::Transform transform;
 	tf::poseMsgToTF(camera_pose_2.pose, transform);
-	br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), object_frame_ , "camera_link"));
+	br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), object_frame_ , camera_frame_));
 	camera_pose_pub_.publish(camera_pose_2);
 
 }
