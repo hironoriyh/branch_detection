@@ -138,7 +138,7 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 
 	Eigen::Vector3d camera_pos(camera_pose_.pose.position.x, camera_pose_.pose.position.y, camera_pose_.pose.position.z);
 
-	Eigen::Isometry3d matrix = Eigen::Translation3d(camera_pos) * camera_quat * aruco_quat * camera_link_quat.inverse();
+	Eigen::Isometry3d matrix = Eigen::Translation3d(camera_pos) * camera_quat * aruco_quat * camera_link_quat;
 	Eigen::Matrix4d& m_ = matrix.matrix();
 
 	geometry_msgs::PoseStamped camera_pose_2;
