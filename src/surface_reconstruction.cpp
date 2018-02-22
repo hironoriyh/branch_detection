@@ -341,7 +341,6 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 
 	std::string path = save_path_ + "/cloud_transformed.ply";
 
-	ROS_INFO("reorient_cloud");
 	const ros::Time time = ros::Time::now();
     tf::StampedTransform transform;
 	try {
@@ -357,12 +356,12 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 		ros::Duration(1.0).sleep();
 	}
 
-	Eigen::Quaternionf camera_quat(transform.getRotation().getW(), transform.getRotation().getX(),
+	Eigen::Quaterniond camera_quat(transform.getRotation().getW(), transform.getRotation().getX(),
 			transform.getRotation().getY(), transform.getRotation().getZ()); // w, x, y, z
-	Eigen::Vector3f camera_pos(transform.getOrigin().getX(), transform.getOrigin().getY(), transform.getOrigin().getZ());
-	Eigen::Affine3f matrix;
-	matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-	Eigen::Matrix4f& m_ = matrix.matrix();
+//	Eigen::Vector3d camera_pos(camera_pose_.pose.position.x*-0.01, camera_pose_.pose.position.y*-0.01, camera_pose_.pose.position.z*-0.01);
+	Eigen::Vector3d camera_pos(transform.getOrigin().getX(), transform.getOrigin().getY(), transform.getOrigin().getZ());
+	Eigen::Affine3d matrix = Eigen::Translation3f(camera_pos) * camera_quat;
+	Eigen::Matrix4d& m_ = matrix.matrix();
 	transformPointCloud(*cloud_ptr_, *cloud_transformed_, m_);
 
 	return true;
