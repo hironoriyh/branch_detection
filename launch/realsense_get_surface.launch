@@ -2,10 +2,11 @@
 <!-- Run object detection publisher using parameterfile -->
 <launch>
 
-  <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" />
-
-  <include file="$(find aruco)/launch/realsense.launch" />
-
+  <!-- <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch" /> 
+  <include file="$(find aruco)/launch/realsense.launch">
+  	<param name="debug" value="false" />
+  </include> -->
+  
 　　<include file="$(find branch_surface)/launch/frame_broadcaster_realsense.launch" />
 
   <node pkg="branch_surface" type="surface_reconstruction_service" name="surface_reconstruction_service" output="screen">
@@ -17,14 +18,12 @@
    <rosparam command="load" file="$(find branch_surface)/params/refinement.yaml"/>
    <param name="point_cloud_topic" value ="/camera/depth_registered/points" />
    <param name="package_path" value ="branch_surface" />
-   
   </node>
   
-    <node pkg="object_detection" type="object_detection_service" name="object_detection_service" output="screen">
+  <node pkg="object_detection" type="object_detection_service" name="object_detection_service" output="screen">
    <rosparam command="load" file="$(find branch_surface)/params/detection.yaml"/>
    <param name="point_cloud_topic" value ="/camera/depth_registered/points" />
    <param name="package_path" value ="branch_surface" />
-   
   </node>
 
 

@@ -16,7 +16,11 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(PCL REQUIRED)
-#find_package(EIGEN REQUIRED)
+
+find_package(CGAL QUIET)
+include( ${CGAL_USE_FILE} )
+#include( CGAL_CreateSingleSourceCGALProgram )
+#set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Don't override flags")
 
 add_service_files(
   FILES
@@ -50,6 +54,7 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
+  ${CGAL_INCLUDE_DIRS}
 )
 
 
@@ -62,5 +67,15 @@ add_executable(
 			src/surface_reconstruction.cpp
 	)
 	
-add_dependencies(surface_reconstruction_service object_detection_gencpp)
-target_link_libraries(surface_reconstruction_service ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+add_dependencies(
+    surface_reconstruction_service 
+    object_detection_gencpp)
+    
+target_link_libraries(
+surface_reconstruction_service 
+${catkin_LIBRARIES} 
+${PCL_LIBRARIES}
+  ${CGAL_LIBRARIES}
+  ${CGAL_3RD_PARTY_LIBRARIES}
+)
+

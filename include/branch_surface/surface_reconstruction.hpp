@@ -71,6 +71,8 @@ private:
 
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
 
+	bool poissonCGAL();
+
 	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_);
 
 	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr);
@@ -149,6 +151,10 @@ private:
 	int grid_res_;
 	std::vector<double> bound_vec_;
 	std::string point_cloud_topic_;
+
+	std::map<std::string,double> quat_yaml_;
+	std::map<std::string,double> pos_yaml_;
+
 
 	//Keypoint Detection Parameters
 //	double normal_radius_;
