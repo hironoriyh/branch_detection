@@ -163,7 +163,6 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 	camera_pose_.pose.position.z *= -0.01;
 
 	const ros::Time time = ros::Time::now();
-//	Eigen::Quaterniond camera_quat(0, 1, 0, 0);
 	Eigen::Quaterniond camera_link_quat(quat_yaml_["w"], quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"]); // 90, 0, 90
 	Eigen::Quaterniond aruco_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
 
@@ -177,7 +176,6 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 	camera_pose_2.header.frame_id = object_frame_;
 	geometry_msgs::Pose pose_only;
 	Eigen::Quaterniond quat(matrix.rotation());
-//	quat = quat.inverse();
 	pose_only.position.x = m_.col(3)[0];
 	pose_only.position.y = m_.col(3)[1];
 	pose_only.position.z = m_.col(3)[2];
@@ -188,10 +186,10 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 //	tf::poseEigenToMsg(matrix, pose_only); // somehow didn't work
 	camera_pose_2.pose = pose_only;
 
-//	static tf::TransformBroadcaster br;
-//	tf::Transform transform;
-//	tf::poseMsgToTF(camera_pose_2.pose, transform);
-//	br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), object_frame_ , "camera_link"));
+	static tf::TransformBroadcaster br;
+	tf::Transform transform;
+	tf::poseMsgToTF(camera_pose_2.pose, transform);
+	br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), object_frame_ , "camera_link"));
 	camera_pose_pub_.publish(camera_pose_2);
 
 }
