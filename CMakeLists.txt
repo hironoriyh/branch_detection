@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(branch_surface)
 
-set(CMAKE_CXX_FLAGS "-std=c++11")
+set (CMAKE_CXX_STANDARD 11)
 
 find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
@@ -17,15 +17,9 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(PCL REQUIRED)
 
-find_package(CGAL QUIET)
-include( ${CGAL_USE_FILE} )
-#include( CGAL_CreateSingleSourceCGALProgram )
-#set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Don't override flags")
-
 add_service_files(
   FILES
   DetectObject.srv
-  LocaliseObjects.srv
 )
 
 generate_messages(
@@ -66,16 +60,15 @@ add_executable(
 			src/filtering.cpp
 			src/surface_reconstruction.cpp
 	)
-	
+
 add_dependencies(
-    surface_reconstruction_service 
+    surface_reconstruction_service
     object_detection_gencpp)
-    
+
 target_link_libraries(
-surface_reconstruction_service 
-${catkin_LIBRARIES} 
+surface_reconstruction_service
+${catkin_LIBRARIES}
 ${PCL_LIBRARIES}
   ${CGAL_LIBRARIES}
   ${CGAL_3RD_PARTY_LIBRARIES}
 )
-

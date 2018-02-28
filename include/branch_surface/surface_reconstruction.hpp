@@ -17,7 +17,6 @@
 #include <pcl/search/kdtree.h>
 
 #include <std_srvs/Empty.h>
-//#include <branch_surface/>
 
 // keypoint descriptors
 #include <pcl/keypoints/iss_3d.h>
@@ -30,8 +29,6 @@
 #include <tf/transform_listener.h>
 
 #include <branch_surface/DetectObject.h>
-
-#include <geometry_msgs/PoseStamped.h>
 
 using namespace pcl;
 typedef PointXYZRGB PointType;
@@ -70,8 +67,6 @@ private:
 	    const PointCloud<PointType>::ConstPtr &cloud, PointCloud<Normal>::Ptr &normals);
 
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
-
-	bool poissonCGAL();
 
 	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_);
 
