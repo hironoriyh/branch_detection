@@ -156,7 +156,7 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 //  tf_opt_to_link.setOrigin(tf::Vector3(0,0,0));
   tf_link_to_obj.setRotation(new_quat);
 
-//  ROS_INFO_STREAM("new_transform: " << new_transform.getOrigin().getX() << " , "<< new_transform.getOrigin().getY() << " , "<< new_transform.getOrigin().getZ());
+  ROS_INFO_STREAM("new_transform: " << tf_link_to_obj.getOrigin().getX() << " , "<< tf_link_to_obj.getOrigin().getY() << " , "<< tf_link_to_obj.getOrigin().getZ());
   static tf::TransformBroadcaster br;
 	br.sendTransform(tf::StampedTransform(tf_link_to_obj, ros::Time::now(), "camera_link", object_frame_));
 
@@ -236,54 +236,16 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 
   tf::Transform transform;
   tf::poseMsgToTF(camera_pose_.pose, transform);
+
+  PointCloud<PointType>::Ptr cloud_ptr_2 (new PointCloud<PointType>);
+  pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_ptr_2, transform);
+
   tf::Transform transform_2;
   transform_2.setIdentity();
   transform_2.setRotation(tf::Quaternion(0,1,0,0));
-  transform *= transform_2;
-  pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform_2);
+  pcl_ros::transformPointCloud(*cloud_ptr_2, *cloud_transformed_, transform_2);
 
-//  tf::StampedTransform transform;
-//  try {
-//    const ros::Duration timeout(1);
-//    ros::Time now = ros::Time::now();
-//    const ros::Duration polling_sleep_duration(4);
-//    std::string* error_msg = NULL;
-//    ROS_INFO_STREAM("camera_frame_: " << camera_frame_);
-//    tf_listener_.waitForTransform(object_frame_, camera_frame_, now, timeout, polling_sleep_duration, error_msg);
-//    tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
-////    pcl_ros::transformPointCloud("object_frame", *cloud_ptr_, *cloud_transformed_, tf_listener_);
-//    pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform);
-//
-//  } catch (tf2::TransformException &ex) {
-//    ROS_WARN("%s", ex.what());
-//    ros::Duration(1.0).sleep();
-//  }
-
-//  const ros::Time time = ros::Time::now();
-//    tf::StampedTransform transform;
-//  try {
-//    const ros::Duration timeout(1);
-//    const ros::Duration polling_sleep_duration(4);
-//    std::string* error_msg = NULL;
-//    tf_listener_.waitForTransform(object_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
-//        tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
-//        ROS_INFO_STREAM("camera to world: " << transform.getRotation().getX() << " , " << transform.getRotation().getY()
-//                          << " , " << transform.getRotation().getZ() << " , " << transform.getRotation().getW());
-//  } catch (tf2::TransformException &ex) {
-//    ROS_WARN("%s", ex.what());
-//    ros::Duration(1.0).sleep();
-//  }
-//
-//  Eigen::Quaterniond camera_quat(transform.getRotation().getW(), transform.getRotation().getX(),
-//      transform.getRotation().getY(), transform.getRotation().getZ()); // w, x, y, z
-////  Eigen::Vector3d camera_pos(camera_pose_.pose.position.x*-0.01, camera_pose_.pose.position.y*-0.01, camera_pose_.pose.position.z*-0.01);
-//  Eigen::Vector3d camera_pos(transform.getOrigin().getX(), transform.getOrigin().getY(), transform.getOrigin().getZ());
-//  Eigen::Affine3d matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-//  Eigen::Matrix4d& m_ = matrix.matrix();
-//  transformPointCloud(*cloud_ptr_, *cloud_transformed_, m_);
-
-
-//  ROS_INFO_STREAM("camera_transform:       " << object_to_camera_transform_.getOrigin().getX() << " , " << object_to_camera_transform_.getOrigin().getY() << " , " << object_to_camera_transform_.getOrigin().getZ());
+  ROS_INFO_STREAM("camera_transform:       " << transform_2.getOrigin().getX() << " , " << transform_2.getOrigin().getY() << " , " << transform_2.getOrigin().getZ());
   return true;
 }
 
@@ -401,14 +363,14 @@ bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::Const
   }
 
   //visualization
-  std::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
-  viewer = normalsVis(cloud_, normals_);
-  ros::Rate r(40);
-  while (!viewer->wasStopped())
-  {
-    viewer->spinOnce ();
-    r.sleep();
-  }
+//  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+//  viewer = normalsVis(cloud_, normals_);
+//  ros::Rate r(40);
+//  while (!viewer->wasStopped())
+//  {
+//    viewer->spinOnce ();
+//    r.sleep();
+//  }
   std::cout<<"Stopped the Viewer"<<std::endl;
 
   return true;
@@ -628,9 +590,9 @@ bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr 
   return true;
 }
 
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals)
+boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals)
 {
-  std::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
+  boost::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
   viewer->setBackgroundColor(1.0, 1.0, 1.0);
   viewer->addPointCloud<PointType>(cloud, "sample cloud");
   viewer->setPointCloudRenderingProperties(visualization::PCL_VISUALIZER_COLOR, 0.0, 0.0, 1.0, "sample cloud");
@@ -646,9 +608,9 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsV
   return (viewer);
 }
 
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis(PointCloud<PointType>::ConstPtr cloud)
+boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis(PointCloud<PointType>::ConstPtr cloud)
 {
-  std::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
+  boost::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
   viewer->setBackgroundColor(1.0, 1.0, 1.0);
   visualization::PointCloudColorHandlerRGBField<PointType> rgb(cloud);
   viewer->addPointCloud<PointType>(cloud, rgb, "sample cloud");
@@ -659,9 +621,9 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::rgbVis(P
   return (viewer);
 }
 
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::xyzVis(PointCloud<PointXYZ>::ConstPtr cloud)
+boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::xyzVis(PointCloud<PointXYZ>::ConstPtr cloud)
 {
-  std::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
+  boost::shared_ptr<visualization::PCLVisualizer> viewer(new visualization::PCLVisualizer("3D Viewer"));
   viewer->setBackgroundColor(1.0, 1.0, 1.0);
 //  visualization::PointCloudColorHandlerRGBField<PointXYZ> rgb(cloud);
   viewer->addPointCloud<PointXYZ>(cloud, "sample cloud");
@@ -673,13 +635,13 @@ std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::xyzVis(P
   return (viewer);
 }
 
-std::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis (
+boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis (
     const PointCloud<PointType>::ConstPtr &cloud, PointCloud<Normal>::Ptr &normals)
 {
   // --------------------------------------------------------
   // -----Open 3D viewer and add point cloud and normals-----
   // --------------------------------------------------------
-  std::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
   viewer->setBackgroundColor (0, 0, 0);
 //  pcl::visualization::PointCloudColorHandlerRGBField<PointType> rgb(cloud);
   pcl::visualization::PointCloudColorHandlerCustom<PointType>

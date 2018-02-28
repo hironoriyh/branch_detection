@@ -58,13 +58,6 @@ public:
 private:
 
 	bool callGetSurface(DetectObject::Request &req, DetectObject::Response &resp);
-	void saveCloud(const sensor_msgs::PointCloud2& cloud);
-	std::shared_ptr<visualization::PCLVisualizer> normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals);
-	std::shared_ptr<visualization::PCLVisualizer> rgbVis(PointCloud<PointType>::ConstPtr cloud);
-	std::shared_ptr<visualization::PCLVisualizer> xyzVis(PointCloud<PointXYZ>::ConstPtr cloud);
-
-	std::shared_ptr<visualization::PCLVisualizer> normalsVis (
-	    const PointCloud<PointType>::ConstPtr &cloud, PointCloud<Normal>::Ptr &normals);
 
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
 
@@ -89,6 +82,12 @@ private:
 	bool computeFPFHDescriptor(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_, PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene_);
 
 	bool computeFPFHLRFs(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<PointType>::Ptr &keypoint_model_ptr_, PointCloud<Normal>::Ptr &normals_, PointCloud<ReferenceFrame>::Ptr FPFH_LRF_scene__);
+
+  void saveCloud(const sensor_msgs::PointCloud2& cloud);
+  boost::shared_ptr<visualization::PCLVisualizer> normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals);
+  boost::shared_ptr<visualization::PCLVisualizer> rgbVis(PointCloud<PointType>::ConstPtr cloud);
+  boost::shared_ptr<visualization::PCLVisualizer> xyzVis(PointCloud<PointXYZ>::ConstPtr cloud);
+  boost::shared_ptr<visualization::PCLVisualizer> normalsVis ( const PointCloud<PointType>::ConstPtr &cloud, PointCloud<Normal>::Ptr &normals);
 
 	ros::NodeHandle nodeHandle_;
 
