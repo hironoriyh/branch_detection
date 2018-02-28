@@ -144,15 +144,21 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
   geometry_msgs::PoseStamped camera_to_object = camera_pose_;
   camera_to_object.pose = pose_;
   camera_pose_pub_.publish(camera_to_object);
+  // from camera to object pose is published
 
+  tf::Quaternion link_to_optical_frame ( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]);
+  tf::Quaternion new_quat = link_to_optical_frame * tf_optical_to_object.getRotation();
+//  tf::Vector3 new_pos = tf_optical_to_object.getOrigin() + tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]);
 
-//  tf::Transform tf_opt_to_link;
+  tf::Transform tf_link_to_obj = tf_optical_to_object;
+//  tf_link_to_obj.
+//  tf_link_to_obf *= link_to_optical_frame;
 //  tf_opt_to_link.setOrigin(tf::Vector3(0,0,0));
-//  tf_opt_to_link.setRotation(link_to_optical_frame.inverse());
+  tf_link_to_obj.setRotation(new_quat);
 
 //  ROS_INFO_STREAM("new_transform: " << new_transform.getOrigin().getX() << " , "<< new_transform.getOrigin().getY() << " , "<< new_transform.getOrigin().getZ());
   static tf::TransformBroadcaster br;
-	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), "camera_rgb_optical_frame", object_frame_));
+	br.sendTransform(tf::StampedTransform(tf_link_to_obj, ros::Time::now(), "camera_link", object_frame_));
 
 
 }
@@ -227,22 +233,31 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 {
 
   ROS_INFO("reorient_cloud");
-  tf::StampedTransform transform;
-  try {
-    const ros::Duration timeout(1);
-    ros::Time now = ros::Time::now();
-    const ros::Duration polling_sleep_duration(4);
-    std::string* error_msg = NULL;
-    ROS_INFO_STREAM("camera_frame_: " << camera_frame_);
-    tf_listener_.waitForTransform(object_frame_, camera_frame_, now, timeout, polling_sleep_duration, error_msg);
-    tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
-//    pcl_ros::transformPointCloud("object_frame", *cloud_ptr_, *cloud_transformed_, tf_listener_);
-    pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform);
 
-  } catch (tf2::TransformException &ex) {
-    ROS_WARN("%s", ex.what());
-    ros::Duration(1.0).sleep();
-  }
+  tf::Transform transform;
+  tf::poseMsgToTF(camera_pose_.pose, transform);
+  tf::Transform transform_2;
+  transform_2.setIdentity();
+  transform_2.setRotation(tf::Quaternion(0,1,0,0));
+  transform *= transform_2;
+  pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform_2);
+
+//  tf::StampedTransform transform;
+//  try {
+//    const ros::Duration timeout(1);
+//    ros::Time now = ros::Time::now();
+//    const ros::Duration polling_sleep_duration(4);
+//    std::string* error_msg = NULL;
+//    ROS_INFO_STREAM("camera_frame_: " << camera_frame_);
+//    tf_listener_.waitForTransform(object_frame_, camera_frame_, now, timeout, polling_sleep_duration, error_msg);
+//    tf_listener_.lookupTransform(object_frame_, camera_frame_, ros::Time(0), transform);
+////    pcl_ros::transformPointCloud("object_frame", *cloud_ptr_, *cloud_transformed_, tf_listener_);
+//    pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform);
+//
+//  } catch (tf2::TransformException &ex) {
+//    ROS_WARN("%s", ex.what());
+//    ros::Duration(1.0).sleep();
+//  }
 
 //  const ros::Time time = ros::Time::now();
 //    tf::StampedTransform transform;
@@ -683,29 +698,22 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
   std::cout << "the length of cloud sensor msg is " << cloud.data[100] << std::endl;
   std::cout << "cloud frame" << cloud.header.frame_id << std::endl;
 
+  sensor_msgs::PointCloud2 new_cloud_msg;
+  const ros::Time time = ros::Time::now();
+  tf::StampedTransform transform;
 
-  PointCloud<PointType> new_cloud, could_transformed;
+  try {
+    tf_listener_.lookupTransform("camera_rgb_optical_frame", object_frame_, time, transform);
+    pcl_ros::transformPointCloud(object_frame_, cloud, new_cloud_msg, tf_listener_);
+//    tf_listener_.transformPointCloud(object_frame_, cloud, new_cloud_msg);
+  } catch (tf2::TransformException &ex) {
+    ROS_WARN("%s", ex.what());
+    ros::Duration(1.0).sleep();
+  }
+
+  PointCloud<PointType> new_cloud;
   fromROSMsg(cloud, new_cloud);
-//  const ros::Time time = ros::Time::now();
-//  Eigen::Quaternionf camera_quat(0, 0.707, 0, -0.707);
-//  Eigen::Vector3f camera_pos(0.047, -0.068, 0.917);
-//
-//  Eigen::Affine3f matrix;
-//  matrix = Eigen::Translation3f(camera_pos) * camera_quat;
-//  Eigen::Matrix4f& m_ = matrix.matrix();
-//  tf::StampedTransform transform;
-//
-//  try {
-//    tf_listener_.lookupTransform(world_frame_, camera_frame_, time, transform);
-////    tf_listener_.waitForTransform(world_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
-//    ROS_INFO_STREAM("tf_transform" << transform.frame_id_);
-////    << " , " << transform.getBasis() << " , " << transform.getRotation());
-//    transformPointCloud(new_cloud, could_transformed, m_.inverse());
-//
-//  } catch (tf2::TransformException &ex) {
-//    ROS_WARN("%s", ex.what());
-//    ros::Duration(1.0).sleep();
-//  }
+
 
   cloud_vector_.push_back(new_cloud);
 }
