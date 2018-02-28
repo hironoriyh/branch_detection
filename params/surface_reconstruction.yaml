@@ -42,5 +42,6 @@ object_frame: object_frame
 camera_frame: camera_link
 point_cloud_topic: /camera/depth_registered/points
 
-camera_rot: {x: -0.5 , y: 0.5, z: -0.5, w: 0.5}
+camera_rot: {x: 0 , y: 0, z: 0, w: 1}
+#camera_rot: {x: -0.5 , y: 0.5, z: -0.5, w: 0.5}
 camera_pos: {x: 0, y: 0., z: 0}

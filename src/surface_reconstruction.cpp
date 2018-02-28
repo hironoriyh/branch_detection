@@ -128,33 +128,56 @@ SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
 
 void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
-//	camera_pose_ = *msg;
+	camera_pose_ = *msg;
 	camera_pose_.header.frame_id = "camera_rgb_optical_frame";
 
 	camera_pose_.pose.position.x *= 0.01;
 	camera_pose_.pose.position.y *= 0.01;
 	camera_pose_.pose.position.z *= 0.01;
 
+//	Eigen::Quaterniond camera_link_quat(quat_yaml_["w"], quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"]); // 90, 0, 90
+//	Eigen::Quaterniond aruco_quat(camera_pose_.pose.orientation.w, camera_pose_.pose.orientation.x, camera_pose_.pose.orientation.y, camera_pose_.pose.orientation.z);
+//
+//	Eigen::Vector3d camera_pos(camera_pose_.pose.position.x + pos_yaml_["x"], camera_pose_.pose.position.y + pos_yaml_["y"], camera_pose_.pose.position.z + pos_yaml_["z"]);
+//
+//	Eigen::Isometry3d matrix = Eigen::Translation3d(camera_pos) * aruco_quat * camera_link_quat;
+//	Eigen::Matrix4d& m_ = matrix.matrix();
+//
+//	geometry_msgs::PoseStamped camera_pose_2;
+//	camera_pose_2 = camera_pose_;
+//	camera_pose_2.header.frame_id = object_frame_;
+//	geometry_msgs::Pose pose_only;
+//	Eigen::Quaterniond quat(matrix.rotation());
+//	pose_only.position.x = m_.col(3)[0];
+//	pose_only.position.y = m_.col(3)[1];
+//	pose_only.position.z = m_.col(3)[2];
+//	pose_only.orientation.x = quat.x();
+//	pose_only.orientation.y = quat.y();
+//	pose_only.orientation.z = quat.z();
+//	pose_only.orientation.w = quat.w();
+////	tf::poseEigenToMsg(matrix, pose_only); // somehow didn't work
+//	camera_pose_2.pose = pose_only;
+
 	tf::Transform transform;
 	tf::poseMsgToTF(camera_pose_.pose, transform);
 
-  geometry_msgs::Pose pose_;
-  tf::poseTFToMsg(transform.inverse(), pose_);
-  geometry_msgs::PoseStamped camera_pose_updated = camera_pose_;
-  camera_pose_updated.pose = pose_;
-  camera_pose_pub_.publish(camera_pose_updated);
-
-//  transform = transform.inverse();
-	tf::Quaternion new_quat = transform.inverse().getRotation() * tf::Quaternion( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]).inverse();
-	tf::Vector3 new_pos = transform.inverse().getOrigin() + tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]);
+	tf::Quaternion new_quat = transform.getRotation() * tf::Quaternion( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]);
+	tf::Vector3 new_pos = transform.getOrigin() + tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]);
 
   tf::Transform new_transform;
   new_transform.setOrigin(new_pos);
   new_transform.setRotation(new_quat);
 
-//  const ros::Time time = ros::Time::now();
-//  static tf::TransformBroadcaster br;
-//	br.sendTransform(tf::StampedTransform(new_transform, ros::Time::now(), object_frame_ , camera_frame_));
+  const ros::Time time = ros::Time::now();
+  static tf::TransformBroadcaster br;
+	br.sendTransform(tf::StampedTransform(new_transform, ros::Time::now(), object_frame_ , camera_frame_));
+
+	geometry_msgs::Pose pose_;
+	tf::poseTFToMsg(new_transform.inverse(), pose_);
+	geometry_msgs::PoseStamped pose2 = camera_pose_;
+	pose2.pose = pose_;
+
+	camera_pose_pub_.publish(pose2);
 
 }
 
