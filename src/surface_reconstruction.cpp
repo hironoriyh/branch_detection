@@ -145,23 +145,33 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
   camera_to_object.pose = pose_;
   camera_pose_pub_.publish(camera_to_object);
 
-  tf::Quaternion link_to_optical_frame ( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]);
-	tf::Quaternion new_quat = link_to_optical_frame * tf_optical_to_object.getRotation();
-	tf::Vector3 new_pos = tf_optical_to_object.getOrigin() + tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]);
+//  tf::Quaternion link_to_optical_frame ( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]);
+//	tf::Quaternion new_quat = link_to_optical_frame * tf_optical_to_object.getRotation();
+//	tf::Vector3 new_pos = tf_optical_to_object.getOrigin() + tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]);
 
+  tf::StampedTransform transform;
+  try{
+    listener.lookupTransform("/turtle2", "/turtle1",
+                             ros::Time(0), transform);
+  }
+  catch (tf::TransformException ex){
+    ROS_ERROR("%s",ex.what());
+    ros::Duration(1.0).sleep();
+  }
+
+	geometry_msgs::PoseStamped msg_link_object = camera_to_object;
+	msg_link_object.header.frame_id = "camera_link";
+//	msg_link_object.pose =
   tf::Transform new_transform;
-  new_transform.setOrigin(new_pos);
-  new_transform.setRotation(new_quat);
+  tf::poseMsgToTF(msg_link_object.pose, new_transform);
 
-  tf::Transform tf_opt_to_link;
-  tf_opt_to_link.setOrigin(tf::Vector3(0,0,0));
-  tf_opt_to_link.setRotation(link_to_optical_frame.inverse());
+//  tf::Transform tf_opt_to_link;
+//  tf_opt_to_link.setOrigin(tf::Vector3(0,0,0));
+//  tf_opt_to_link.setRotation(link_to_optical_frame.inverse());
 
+  ROS_INFO_STREAM("new_transform: " << new_transform.getOrigin().getX() << " , "<< new_transform.getOrigin().getY() << " , "<< new_transform.getOrigin().getZ());
   static tf::TransformBroadcaster br;
-	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), object_frame_ , "camera_rgb_optical_frame"));
-
-  static tf::TransformBroadcaster br2;
-	br2.sendTransform(tf::StampedTransform(tf_opt_to_link, ros::Time::now(), "camera_rgb_optical_frame" , "camera_link"));
+	br.sendTransform(tf::StampedTransform(new_transform, ros::Time::now(), object_frame_ , "camera_link"));
 
 
 }
