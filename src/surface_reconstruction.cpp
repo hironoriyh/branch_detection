@@ -148,7 +148,7 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 
 //  ROS_INFO_STREAM("new_transform: " << tf_link_to_obj.getOrigin().getX() << " , "<< tf_link_to_obj.getOrigin().getY() << " , "<< tf_link_to_obj.getOrigin().getZ());
   static tf::TransformBroadcaster br;
-	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), "camera_rgb_optical_frame", "intermediate_object_frame"));
+	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), camera_frame_, "intermediate_object_frame"));
 
 	tf::Transform local_object_frame (tf::Quaternion(0,1, 0, 0), tf::Vector3(0.075, 0.135, 0));
   br.sendTransform(tf::StampedTransform(local_object_frame, ros::Time::now(), "intermediate_object_frame", object_frame_));
@@ -235,15 +235,19 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
      const ros::Duration polling_sleep_duration(4);
      std::string* error_msg = NULL;
 
-     tf_listener_.waitForTransform(object_frame_, "camera_depth_optical_frame", header.stamp, timeout, polling_sleep_duration, error_msg);
-     tf_listener_.lookupTransform(object_frame_, "camera_depth_optical_frame",  header.stamp, transform);
+     tf_listener_.waitForTransform(object_frame_, camera_frame_, header.stamp, timeout, polling_sleep_duration, error_msg);
+     tf_listener_.lookupTransform(object_frame_, camera_frame_,  header.stamp, transform);
 
-     pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform);
-//     ROS_INFO_STREAM("id after transform: " << cloud_transformed_->header.frame_id);
+     cloud_transformed_->header.frame_id = object_frame_;
+     ROS_INFO_STREAM("frame id befofe transform: " << cloud_ptr_->header.frame_id);
+     pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform.inverse());
+     cloud_transformed_->header = cloud_ptr_->header;
+     cloud_transformed_->header.frame_id = object_frame_;
+     ROS_INFO_STREAM("frame id after transform: " << cloud_transformed_->header.frame_id);
    } catch (tf2::TransformException &ex) {
      ROS_WARN("%s", ex.what());
      ros::Duration(1.0).sleep();
-     *cloud_transformed_ = *cloud_ptr_;
+//     *cloud_transformed_ = *cloud_ptr_;
    }
 
   return true;
@@ -323,7 +327,10 @@ bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
   sor.setInputCloud(cloud_);
   sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
   sor.filter(*cloud_downsampled);
+  cloud_downsampled->header = cloud_->header;
   *cloud_ = *cloud_downsampled;
+
+  ROS_INFO_STREAM("cloud_downsampled frame id: " << cloud_downsampled->header.frame_id);
   std::string path = save_path_ + "/Downsampled_0.ply";
   io::savePLYFile(path, *cloud_downsampled);
 

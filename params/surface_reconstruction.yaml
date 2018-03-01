@@ -39,7 +39,7 @@ reorient_cloud: true
 package_path: branch_surface
 
 object_frame: object_frame
-camera_frame: camera_link
+camera_frame: camera_rgb_optical_frame
 point_cloud_topic: /camera/depth_registered/points
 
 #camera_rot: {x: 0 , y: 0, z: 0, w: 1}
