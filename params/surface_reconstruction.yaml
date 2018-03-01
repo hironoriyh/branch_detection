@@ -34,7 +34,7 @@ full_display: true
 use_all_points: true
 save_clouds: true
 normal_flip: true
-reorient_cloud: true
+reorient_cloud: false
 
 package_path: branch_surface
 

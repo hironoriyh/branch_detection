@@ -150,7 +150,7 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
   static tf::TransformBroadcaster br;
 	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), camera_frame_, "intermediate_object_frame"));
 
-	tf::Transform local_object_frame (tf::Quaternion(0,1, 0, 0), tf::Vector3(0.075, 0.135, 0));
+	tf::Transform local_object_frame (tf::Quaternion(0,1, 0, 0), tf::Vector3(0.075, 0.135, -0.05));
   br.sendTransform(tf::StampedTransform(local_object_frame, ros::Time::now(), "intermediate_object_frame", object_frame_));
 
 
@@ -667,9 +667,32 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
   std::cout << "the length of cloud sensor msg is " << cloud.data[100] << std::endl;
   std::cout << "cloud frame: " << cloud.header.frame_id << std::endl;
 
-  PointCloud<PointType> new_cloud;
-  fromROSMsg(cloud, new_cloud);
+  sensor_msgs::PointCloud2 oriented_sensor_msg;
 
+  try {
+    tf::StampedTransform transform;
+    std_msgs::Header header;
+//    pcl_conversions::fromPCL(cloud_ptr_->header, header);
+    const ros::Duration timeout(1);
+    const ros::Duration polling_sleep_duration(4);
+    std::string* error_msg = NULL;
+
+    tf_listener_.waitForTransform(object_frame_, camera_frame_, header.stamp, timeout, polling_sleep_duration, error_msg);
+    tf_listener_.lookupTransform(object_frame_, camera_frame_,  header.stamp, transform);
+
+//    cloud_transformed_->header.frame_id = object_frame_;
+    ROS_INFO_STREAM("frame id befofe transform: " << cloud.header.frame_id);
+    pcl_ros::transformPointCloud(object_frame_, transform, cloud, oriented_sensor_msg);
+//    cloud_transformed_->header = cloud_ptr_->header;
+//    cloud_transformed_->header.frame_id = object_frame_;
+    ROS_INFO_STREAM("frame id after transform: " << oriented_sensor_msg.header.frame_id);
+  } catch (tf2::TransformException &ex) {
+    ROS_WARN("%s", ex.what());
+    ros::Duration(1.0).sleep();
+  }
+
+  PointCloud<PointType> new_cloud;
+  fromROSMsg(oriented_sensor_msg, new_cloud);
 
   cloud_vector_.push_back(new_cloud);
 }
