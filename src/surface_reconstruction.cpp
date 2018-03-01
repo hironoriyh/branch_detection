@@ -140,25 +140,23 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
   geometry_msgs::Pose pose_;
   tf::Transform tf_optical_to_object = transform.inverse();
 
+//  tf::Quaternion link_to_optical_frame ( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]);
+//  tf::Quaternion new_quat = link_to_optical_frame * tf_optical_to_object.getRotation();
+//  tf::Transform tf_link_to_obj = tf_optical_to_object;
+//  tf_link_to_obj.setRotation(new_quat);
+
   tf::poseTFToMsg(tf_optical_to_object, pose_);
   geometry_msgs::PoseStamped camera_to_object = camera_pose_;
   camera_to_object.pose = pose_;
   camera_pose_pub_.publish(camera_to_object);
   // from camera to object pose is published
 
-  tf::Quaternion link_to_optical_frame ( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]);
-  tf::Quaternion new_quat = link_to_optical_frame * tf_optical_to_object.getRotation();
-//  tf::Vector3 new_pos = tf_optical_to_object.getOrigin() + tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]);
-
-  tf::Transform tf_link_to_obj = tf_optical_to_object;
-//  tf_link_to_obj.
-//  tf_link_to_obf *= link_to_optical_frame;
-//  tf_opt_to_link.setOrigin(tf::Vector3(0,0,0));
-  tf_link_to_obj.setRotation(new_quat);
-
 //  ROS_INFO_STREAM("new_transform: " << tf_link_to_obj.getOrigin().getX() << " , "<< tf_link_to_obj.getOrigin().getY() << " , "<< tf_link_to_obj.getOrigin().getZ());
   static tf::TransformBroadcaster br;
-	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), "camera_rgb_optical_frame", object_frame_));
+	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), "camera_rgb_optical_frame", "intermediate_object_frame"));
+
+	tf::Transform local_object_frame (tf::Quaternion(0,1, 0, 0), tf::Vector3(0.1, 0.15, 0));
+  br.sendTransform(tf::StampedTransform(local_object_frame, ros::Time::now(), "intermediate_object_frame", object_frame_));
 
 
 }
@@ -234,19 +232,23 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 
   ROS_INFO("reorient_cloud");
 
-  tf::Transform transform;
-  tf::poseMsgToTF(camera_pose_.pose, transform);
+  const ros::Time time = ros::Time::now();
+   tf::StampedTransform transform;
+   try {
+     const ros::Duration timeout(1);
+     const ros::Duration polling_sleep_duration(4);
+     std::string* error_msg = NULL;
 
-  PointCloud<PointType>::Ptr cloud_ptr_2 (new PointCloud<PointType>);
-  pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform);
-  ROS_INFO_STREAM("camera_transform:       " << transform.getOrigin().getX() << " , " << transform.getOrigin().getY() << " , " << transform.getOrigin().getZ());
+     tf_listener_.waitForTransform(object_frame_, "camera_rgb_optical_frame", time, timeout, polling_sleep_duration, error_msg);
+     tf_listener_.lookupTransform(object_frame_,"camera_rgb_optical_frame",  time, transform);
+     pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform);
+     ROS_INFO_STREAM("id after transform: " << cloud_transformed_->header.frame_id);
 
-//  tf::Transform transform_2;
-//  transform_2.setIdentity();
-//  transform_2.setRotation(tf::Quaternion(0,1,0,0));
-//  pcl_ros::transformPointCloud(*cloud_ptr_2, *cloud_transformed_, transform_2);
+   } catch (tf2::TransformException &ex) {
+     ROS_WARN("%s", ex.what());
+     ros::Duration(1.0).sleep();
+   }
 
-//  ROS_INFO_STREAM("camera_transform:       " << transform_2.getOrigin().getX() << " , " << transform_2.getOrigin().getY() << " , " << transform_2.getOrigin().getZ());
   return true;
 }
 
@@ -666,7 +668,7 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
   tf::StampedTransform transform;
 
 //  try {
-//    tf_listener_.lookupTransform("camera_rgb_optical_frame", object_frame_, time, transform);
+//    tf_listener_.lookupTransform( object_frame_,"camera_rgb_optical_frame", time, transform);
 //    pcl_ros::transformPointCloud(object_frame_, cloud, new_cloud_msg, tf_listener_);
 ////    tf_listener_.transformPointCloud(object_frame_, cloud, new_cloud_msg);
 //  } catch (tf2::TransformException &ex) {
