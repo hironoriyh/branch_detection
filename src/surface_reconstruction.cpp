@@ -150,7 +150,7 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
   static tf::TransformBroadcaster br;
 	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), camera_frame_, "intermediate_object_frame"));
 
-	tf::Transform local_object_frame (tf::Quaternion(0,1, 0, 0), tf::Vector3(0.075, 0.135, -0.05));
+	tf::Transform local_object_frame (tf::Quaternion(0,1, 0, 0), tf::Vector3(0.075, 0.135, 0.05));
   br.sendTransform(tf::StampedTransform(local_object_frame, ros::Time::now(), "intermediate_object_frame", object_frame_));
 
 
