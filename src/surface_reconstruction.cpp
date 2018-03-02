@@ -49,6 +49,9 @@
 #include <pcl/common/centroid.h>
 #include <pcl/filters/project_inliers.h>
 
+// filtering
+#include <pcl/filters/crop_box.h>
+
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
@@ -192,11 +195,11 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	PointCloud<PointType>::Ptr cloud_transformed(new PointCloud<PointType>);
 
 	// loadPCD or pcd
-	if (use_saved_pc_) {
-		std::string file_name = save_path_ + "/pcd/Preprocessed_0.pcd";
-		if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)
-			PCL_ERROR("Couldn't read pcd file \n");
-	} else {
+  if (use_saved_pc_) {
+    std::string file_name = save_path_ + "/pcd/Preprocessed_0.pcd";
+    if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)
+      PCL_ERROR("Couldn't read pcd file \n");
+  } else {
 
     if (cloud_vector_.size() < 1) {
       // Sample clouds
@@ -214,8 +217,8 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 		std::cout << cloud_vector_.size() << " clouds are sampled. \n" <<
 		    "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
 
-//	  number_of_average_clouds_ = cloud_vector_.size();
-//	  number_of_median_clouds_ = cloud_vector_.size();
+//	  number_of_average_clouds_ = cloud_vector_.size()/2;
+//	  number_of_median_clouds_ = cloud_vector_.size()/2;
 //		preprocess(cloud_ptr);
 
 		for(int i=0; i< cloud_vector_.size(); i++) *cloud_ptr += cloud_vector_[i];
@@ -356,16 +359,24 @@ bool SurfaceReconstructionSrv::filtering(PointCloud<PointType>::Ptr input_cloud_
 
   ROS_INFO("pass through filter");
   // Create the filtering object
-  PassThrough<PointType> pass;
-  pass.setInputCloud(input_cloud_ptr_);
-  pass.setFilterFieldName("x");
-  pass.setFilterLimits(xmin_, xmax_);
-  pass.setFilterFieldName("y");
-  pass.setFilterLimits(ymin_, ymax_);
-  pass.setFilterFieldName("z");
-  pass.setFilterLimits(zmin_, zmax_);
-  //pass.setFilterLimitsNegative (true);
-  pass.filter(*preprocessed_cloud_ptr_);
+//  PassThrough<PointType> pass;
+//  pass.setInputCloud(input_cloud_ptr_);
+//  pass.setFilterFieldName("x");
+//  pass.setFilterLimits(xmin_, xmax_);
+//  pass.setFilterFieldName("y");
+//  pass.setFilterLimits(ymin_, ymax_);
+//  pass.setFilterFieldName("z");
+//  pass.setFilterLimits(zmin_, zmax_);
+//  //pass.setFilterLimitsNegative (true);
+//  pass.filter(*preprocessed_cloud_ptr_);
+
+  CropBox<PointType> boxFilter;
+  boxFilter.setMin(Eigen::Vector4f(xmin_, ymin_, zmin_, 1.0));
+  boxFilter.setMax(Eigen::Vector4f(xmax_, ymax_, zmax_, 1.0));
+  boxFilter.setInputCloud(input_cloud_ptr_);
+  boxFilter.filter(*preprocessed_cloud_ptr_);
+
+  ROS_INFO_STREAM("before passthrough: " << input_cloud_ptr_->points.size() << " , after passthrough " << preprocessed_cloud_ptr_->points.size() );
 
 
   ROS_INFO("planar segmentation");
@@ -781,11 +792,8 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
     tf_listener_.waitForTransform(object_frame_, camera_frame_, header.stamp, timeout, polling_sleep_duration, error_msg);
     tf_listener_.lookupTransform(object_frame_, camera_frame_,  header.stamp, transform);
 
-//    cloud_transformed_->header.frame_id = object_frame_;
     ROS_INFO_STREAM("frame id befofe transform: " << cloud.header.frame_id);
     pcl_ros::transformPointCloud(object_frame_, transform, cloud, oriented_sensor_msg);
-//    cloud_transformed_->header = cloud_ptr_->header;
-//    cloud_transformed_->header.frame_id = object_frame_;
     ROS_INFO_STREAM("frame id after transform: " << oriented_sensor_msg.header.frame_id);
   } catch (tf2::TransformException &ex) {
     ROS_WARN("%s", ex.what());
@@ -798,7 +806,6 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 
   PointCloud<PointType>::Ptr original_cloud_ptr(new PointCloud<PointType>);
   fromROSMsg(oriented_sensor_msg, *original_cloud_ptr);
-//  *original_cloud_ptr = new_cloud;
   PointCloud<PointType>::Ptr processed_cloud_ptr(new PointCloud<PointType>);
   filtering(original_cloud_ptr, processed_cloud_ptr);
   cloud_vector_.push_back(*processed_cloud_ptr);

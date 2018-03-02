@@ -4,27 +4,28 @@ number_of_average_clouds: 1
 number_of_median_clouds: 1
 z_threshold: 0.01
 planarSegmentationTolerance: 0.02
-min_number_of_inliers: 15000
-xmin: -0.2
-xmax: 0.2
-ymin: -0.2
-ymax: 0.2
+min_number_of_inliers: 30000
+xmin: -0.3
+xmax: 0.3
+ymin: -0.3
+ymax: 0.3
 zmin: 0.1
-zmax: 1.0
+zmax: 1.5
 
 bin_size: 0.015
 inlier_dist_segmentation: 0.01
 segmentation_inlier_ratio: 0.2
 max_number_of_instances: 6
-max_fitness_score: 0.0005
-inlier_dist_icp: 0.005
-icp_inlier_threshold: 0.9
-min_inlier_ratio_validation: 30
-inlier_dist_validation: 0.0025
+max_fitness_score: 0.001
 
-full_display: true
+inlier_dist_icp: 0.01
+icp_inlier_threshold: 0.3
+min_inlier_ratio_validation: 60
+inlier_dist_validation: 0.005
+
+full_display: false
 save_clouds: true
-use_all_points: false
+use_all_points: true
 use_hough: false
 
 package_path: branch_surface

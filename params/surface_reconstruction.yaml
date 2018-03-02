@@ -1,13 +1,13 @@
 leaf_size: 0.0025
 model_folder: ""
 planarSegmentationTolerance: 0.02
-min_number_of_inliers: 30000
+min_number_of_inliers: 5000
 xmin: -0.1
 xmax: 0.1
 ymin: -0.1
 ymax: 0.1
 zmin: 0.0
-zmax: 1.0
+zmax: 0.5
 
 
 bin_size: 0.015
