@@ -68,6 +68,8 @@ private:
 
 	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr);
 
+	bool filtering(PointCloud<PointType>::Ptr input_cloud_ptr_, PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
+
 //	bool preprocess(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
   bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 
@@ -139,6 +141,7 @@ private:
 	bool normal_flip_;
 	bool reorient_cloud_;
 	bool keep_snapshot_;
+	bool full_display_;
 
 	std::string save_path_;
   std::string save_package_;

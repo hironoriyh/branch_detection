@@ -49,6 +49,11 @@
 #include <pcl/common/centroid.h>
 #include <pcl/filters/project_inliers.h>
 
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/ModelCoefficients.h>
+
 namespace surface_reconstruction_srv {
 
 SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
@@ -92,6 +97,7 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   nodeHandle.getParam("/surface_reconstruction_service/save_package", save_package_);
   nodeHandle.getParam("/surface_reconstruction_service/use_all_points", use_all_points_);
   nodeHandle.getParam("/surface_reconstruction_service/keep_snapshot", keep_snapshot_);
+  nodeHandle.getParam("/surface_reconstruction_service/full_display", full_display_);
 
   nodeHandle.getParam("/surface_reconstruction_service/object_frame", object_frame_);
   nodeHandle.getParam("/surface_reconstruction_service/camera_frame", camera_frame_);
@@ -208,9 +214,11 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 		std::cout << cloud_vector_.size() << " clouds are sampled. \n" <<
 		    "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
 
-	  number_of_average_clouds_ = cloud_vector_.size();
-	  number_of_median_clouds_ = cloud_vector_.size();
-		preprocess(cloud_ptr);
+//	  number_of_average_clouds_ = cloud_vector_.size();
+//	  number_of_median_clouds_ = cloud_vector_.size();
+//		preprocess(cloud_ptr);
+
+		for(int i=0; i< cloud_vector_.size(); i++) *cloud_ptr += cloud_vector_[i];
 
     std::string path;
     if (save_clouds_) {
@@ -281,14 +289,14 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr){
 	// projection
 	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
-	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
+	ModelCoefficients::Ptr coefficients(new ModelCoefficients());
 	coefficients->values.resize(4);
 	coefficients->values[0] = coefficients->values[1] = 0;
 	coefficients->values[2] = 1;
 	coefficients->values[3] = 0;
 
 	ProjectInliers<PointType> proj;
-	proj.setModelType(pcl::SACMODEL_PLANE);
+	proj.setModelType(SACMODEL_PLANE);
 	proj.setInputCloud(cloud_ptr);
 	proj.setModelCoefficients(coefficients);
 	proj.filter(*cloud_projected);
@@ -343,6 +351,70 @@ bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocesse
   return true;
 }
 
+bool SurfaceReconstructionSrv::filtering(PointCloud<PointType>::Ptr input_cloud_ptr_, PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
+{
+
+  ROS_INFO("pass through filter");
+  // Create the filtering object
+  PassThrough<PointType> pass;
+  pass.setInputCloud(input_cloud_ptr_);
+  pass.setFilterFieldName("x");
+  pass.setFilterLimits(xmin_, xmax_);
+  pass.setFilterFieldName("y");
+  pass.setFilterLimits(ymin_, ymax_);
+  pass.setFilterFieldName("z");
+  pass.setFilterLimits(zmin_, zmax_);
+  //pass.setFilterLimitsNegative (true);
+  pass.filter(*preprocessed_cloud_ptr_);
+
+
+  ROS_INFO("planar segmentation");
+
+  ModelCoefficients::Ptr coefficients(new ModelCoefficients);
+  PointIndices::Ptr inliers(new PointIndices);
+
+  // Create the segmentation object
+  SACSegmentation<PointType> seg;
+  // Optional
+  seg.setOptimizeCoefficients(true);
+  // Mandatory
+  seg.setModelType(SACMODEL_PLANE);
+  seg.setMethodType(SAC_RANSAC);
+  seg.setDistanceThreshold(planarSegmentationTolerance_);
+  seg.setInputCloud(preprocessed_cloud_ptr_);
+  seg.segment(*inliers, *coefficients);
+
+  if (inliers->indices.size () < min_number_of_inliers_)
+  {
+      ROS_WARN_STREAM(inliers->indices.size() << "is lower than min number of inliers " << min_number_of_inliers_);
+  }
+  else {
+    //Move inliers to zero
+    for (int i = 0; i < inliers->indices.size(); i++) {
+      preprocessed_cloud_ptr_->points[inliers->indices[i]].x = 0;
+      preprocessed_cloud_ptr_->points[inliers->indices[i]].y = 0;
+      preprocessed_cloud_ptr_->points[inliers->indices[i]].z = 0;
+    }
+
+    //Remove inliers from cloud
+    PointCloud<PointType>::Ptr segmentedCloud(new PointCloud<PointType>);
+    for (int i_point = 0; i_point < preprocessed_cloud_ptr_->size(); i_point++) {
+      if (preprocessed_cloud_ptr_->points[i_point].z != 0)
+        segmentedCloud->push_back(preprocessed_cloud_ptr_->points[i_point]);
+    }
+    preprocessed_cloud_ptr_->points = segmentedCloud->points;
+    preprocessed_cloud_ptr_->width = segmentedCloud->width;
+    preprocessed_cloud_ptr_->height = segmentedCloud->height;
+
+    ROS_INFO_STREAM( "Removed " << inliers->indices.size() << " points as part of a plane." );
+  }
+
+  return true;
+}
+
+
+
+
 bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
 {
   ROS_INFO("Downsampled");
@@ -396,14 +468,17 @@ bool SurfaceReconstructionSrv::computeNormals(const PointCloud<PointType>::Const
   }
 
   //visualization
-//  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
-//  viewer = normalsVis(cloud_, normals_);
-//  ros::Rate r(40);
-//  while (!viewer->wasStopped())
-//  {
-//    viewer->spinOnce ();
-//    r.sleep();
-//  }
+  if(full_display_){
+      boost::shared_ptr<visualization::PCLVisualizer> viewer;
+      viewer = normalsVis(cloud_, normals_);
+      ros::Rate r(40);
+      while (!viewer->wasStopped())
+      {
+        viewer->spinOnce ();
+        r.sleep();
+      }
+  }
+
   std::cout<<"Stopped the Viewer"<<std::endl;
 
   return true;
@@ -674,15 +749,15 @@ boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normal
   // --------------------------------------------------------
   // -----Open 3D viewer and add point cloud and normals-----
   // --------------------------------------------------------
-  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  boost::shared_ptr<visualization::PCLVisualizer> viewer (new visualization::PCLVisualizer ("3D Viewer"));
   viewer->setBackgroundColor (0, 0, 0);
-//  pcl::visualization::PointCloudColorHandlerRGBField<PointType> rgb(cloud);
-  pcl::visualization::PointCloudColorHandlerCustom<PointType>
+//  visualization::PointCloudColorHandlerRGBField<PointType> rgb(cloud);
+  visualization::PointCloudColorHandlerCustom<PointType>
      rgb_color(cloud, 255, 0, 0);
   viewer->addPointCloud<PointType> (cloud, rgb_color, "sample cloud");
-  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+  viewer->setPointCloudRenderingProperties (visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
 
-  viewer->addPointCloudNormals<PointType, pcl::Normal> (cloud, normals, 10, 0.05, "normals");
+  viewer->addPointCloudNormals<PointType, Normal> (cloud, normals, 10, 0.05, "normals");
   viewer->addCoordinateSystem (0.1);
   viewer->initCameraParameters ();
   return (viewer);
@@ -717,12 +792,18 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
     ros::Duration(1.0).sleep();
   }
 
-  PointCloud<PointType> new_cloud;
-  fromROSMsg(oriented_sensor_msg, new_cloud);
-  cloud_vector_.push_back(new_cloud);
-//  PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
-//  preprocess(cloud_ptr);
-//  cloud_vector_.push_back(*cloud_ptr);
+//    PointCloud<PointType> new_cloud;
+//    fromROSMsg(oriented_sensor_msg, new_cloud);
+//    cloud_vector_.push_back(new_cloud);
+
+  PointCloud<PointType>::Ptr original_cloud_ptr(new PointCloud<PointType>);
+  fromROSMsg(oriented_sensor_msg, *original_cloud_ptr);
+//  *original_cloud_ptr = new_cloud;
+  PointCloud<PointType>::Ptr processed_cloud_ptr(new PointCloud<PointType>);
+  filtering(original_cloud_ptr, processed_cloud_ptr);
+  cloud_vector_.push_back(*processed_cloud_ptr);
 }
+
+
 
 }/*end namespace*/
