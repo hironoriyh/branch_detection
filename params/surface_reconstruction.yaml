@@ -4,13 +4,13 @@ number_of_average_clouds: 1
 number_of_median_clouds: 1
 z_threshold: 0.01
 planarSegmentationTolerance: 0.02
-min_number_of_inliers: 15000
+min_number_of_inliers: 30000
 xmin: -0.2
 xmax: 0.2
-ymin: -0.1
-ymax: 0.15
+ymin: -0.2
+ymax: 0.2
 zmin: 0.0
-zmax: 1.5
+zmax: 1.0
 
 
 bin_size: 0.015
@@ -35,6 +35,7 @@ use_all_points: true
 save_clouds: true
 normal_flip: true
 reorient_cloud: false
+keep_snapshot: true
 
 package_path: branch_surface
 
@@ -42,6 +43,5 @@ object_frame: object_frame
 camera_frame: camera_rgb_optical_frame
 point_cloud_topic: /camera/depth_registered/points
 
-#camera_rot: {x: 0 , y: 0, z: 0, w: 1}
-camera_rot: {x: -0.5 , y: 0.5, z: -0.5, w: 0.5}
-camera_pos: {x: 0, y: 0., z: 0}
+camera_rot: {x: 0 , y: 1, z: 0, w: 0}
+camera_pos: {x: 0.075, y: 0.135, z: 0.0}

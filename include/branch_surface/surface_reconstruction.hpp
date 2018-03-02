@@ -30,6 +30,7 @@
 
 #include <branch_surface/DetectObject.h>
 
+
 using namespace pcl;
 typedef PointXYZRGB PointType;
 typedef branch_surface::DetectObject DetectObject;
@@ -57,6 +58,8 @@ public:
 
 private:
 
+	bool callSnapShot(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
+
 	bool callGetSurface(DetectObject::Request &req, DetectObject::Response &resp);
 
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
@@ -65,7 +68,8 @@ private:
 
 	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr);
 
-	bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
+//	bool preprocess(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
+  bool preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 
 	bool DownSample(PointCloud<PointType>::Ptr &cloud_);
 
@@ -134,6 +138,8 @@ private:
 	bool save_clouds_;
 	bool normal_flip_;
 	bool reorient_cloud_;
+	bool keep_snapshot_;
+
 	std::string save_path_;
   std::string save_package_;
 

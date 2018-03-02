@@ -35,7 +35,6 @@
 #include <pcl/surface/poisson.h>
 #include <pcl/surface/gp3.h>
 #include <pcl/surface/texture_mapping.h>
-//#include <pcl/surface/marching_cubes.h>
 #include <pcl/surface/marching_cubes_hoppe.h>
 
 #include <pcl/visualization/cloud_viewer.h>
@@ -91,8 +90,8 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   nodeHandle.getParam("/surface_reconstruction_service/save_clouds", save_clouds_);
   nodeHandle.getParam("/surface_reconstruction_service/save_path", save_path_);
   nodeHandle.getParam("/surface_reconstruction_service/save_package", save_package_);
-
   nodeHandle.getParam("/surface_reconstruction_service/use_all_points", use_all_points_);
+  nodeHandle.getParam("/surface_reconstruction_service/keep_snapshot", keep_snapshot_);
 
   nodeHandle.getParam("/surface_reconstruction_service/object_frame", object_frame_);
   nodeHandle.getParam("/surface_reconstruction_service/camera_frame", camera_frame_);
@@ -109,7 +108,10 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   bound_vec_.push_back(zmin_);
   bound_vec_.push_back(zmax_);
 
-  ros::ServiceServer service = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
+  ros::ServiceServer service_get_model = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
+  ros::ServiceServer service_snapshot = nodeHandle_.advertiseService("/snap_shot", &SurfaceReconstructionSrv::callSnapShot, this);
+
+
   cameraPoseStateSubscriber_ = nodeHandle_.subscribe<geometry_msgs::PoseStamped>("/aruco/pose", 1, &SurfaceReconstructionSrv::CameraPoseCallback, this);
   camera_pose_pub_ = nodeHandle_.advertise<geometry_msgs::PoseStamped>("/camera_pose", 1, true);
 
@@ -135,11 +137,6 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
   geometry_msgs::Pose pose_;
   tf::Transform tf_optical_to_object = transform.inverse();
 
-//  tf::Quaternion link_to_optical_frame ( quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]);
-//  tf::Quaternion new_quat = link_to_optical_frame * tf_optical_to_object.getRotation();
-//  tf::Transform tf_link_to_obj = tf_optical_to_object;
-//  tf_link_to_obj.setRotation(new_quat);
-
   tf::poseTFToMsg(tf_optical_to_object, pose_);
   geometry_msgs::PoseStamped camera_to_object = camera_pose_;
   camera_to_object.pose = pose_;
@@ -149,11 +146,28 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 //  ROS_INFO_STREAM("new_transform: " << tf_link_to_obj.getOrigin().getX() << " , "<< tf_link_to_obj.getOrigin().getY() << " , "<< tf_link_to_obj.getOrigin().getZ());
   static tf::TransformBroadcaster br;
 	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), camera_frame_, "intermediate_object_frame"));
-
-	tf::Transform local_object_frame (tf::Quaternion(0,1, 0, 0), tf::Vector3(0.075, 0.135, 0.05));
+  tf::Transform local_object_frame (tf::Quaternion(quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]), tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]));
   br.sendTransform(tf::StampedTransform(local_object_frame, ros::Time::now(), "intermediate_object_frame", object_frame_));
+}
 
+bool SurfaceReconstructionSrv::callSnapShot(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+{
+  ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
+  ros::Rate r(60);
+  std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
+  int count = cloud_vector_.size();
+  ROS_INFO_STREAM("cloud vector num: " << count);
 
+  while (cloud_vector_.size() - count < 1) {
+
+//    ROS_INFO_STREAM("cloud vector num: " << count);
+    ros::spinOnce();
+    r.sleep();
+  }
+
+  ROS_INFO_STREAM("cloud vector size: " << cloud_vector_.size());
+
+  return true;
 }
 
 bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, DetectObject::Response &resp) {
@@ -178,26 +192,35 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 			PCL_ERROR("Couldn't read pcd file \n");
 	} else {
 
-		// Sample clouds
-		ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
-		ros::Rate r(60);
-		std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
+    if (cloud_vector_.size() < 1) {
+      // Sample clouds
+      ros::Subscriber sub = nodeHandle_.subscribe(point_cloud_topic_, 1, &SurfaceReconstructionSrv::saveCloud, this);
+      ros::Rate r(60);
+      std::cout << "Waiting for point cloud images..." << std::endl << std::endl;
 
-		while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
-			//    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
-			ros::spinOnce();
-			r.sleep();
-		}
-		std::cout << "Clouds are sampled." << "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
-		std::string path;
-		if (save_clouds_) {
-			path = save_path_ + "/cloud_raw.ply";
-			io::savePLYFile(path, cloud_vector_[0]);
-		}
+      while (cloud_vector_.size() < number_of_median_clouds_ + number_of_average_clouds_) {
+        //    ROS_INFO_STREAM("cloud vector num: " << cloud_vector_.size());
+        ros::spinOnce();
+        r.sleep();
+      }
+    }
 
+		std::cout << cloud_vector_.size() << " clouds are sampled. \n" <<
+		    "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
+
+	  number_of_average_clouds_ = cloud_vector_.size();
+	  number_of_median_clouds_ = cloud_vector_.size();
 		preprocess(cloud_ptr);
+
+    std::string path;
+    if (save_clouds_) {
+      path = save_path_ + "/cloud_raw.ply";
+      io::savePLYFile(path, *cloud_ptr);
+    }
+
 		if(reorient_cloud_) reorientModel(cloud_ptr, cloud_transformed);
 		else  *cloud_transformed = *cloud_ptr;
+
 		DownSample(cloud_transformed);
 	}
 
@@ -219,6 +242,7 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 
 	std::cout << "service done!" << std::endl;
 
+  if(!keep_snapshot_)cloud_vector_.clear();
 	return true;
 }
 
@@ -290,7 +314,9 @@ bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr
 }
 
 
+//bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
 bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
+
 {
   // DO NOT MODIFY! Parameter recalculation
   std::vector<float> boundaries;
@@ -664,7 +690,7 @@ boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normal
 
 void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 {
-  std::cout << "the length of cloud sensor msg is " << cloud.data[100] << std::endl;
+  std::cout << "the length of cloud vector is " << cloud_vector_.size() << std::endl;
   std::cout << "cloud frame: " << cloud.header.frame_id << std::endl;
 
   sensor_msgs::PointCloud2 oriented_sensor_msg;
@@ -693,8 +719,10 @@ void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)
 
   PointCloud<PointType> new_cloud;
   fromROSMsg(oriented_sensor_msg, new_cloud);
-
   cloud_vector_.push_back(new_cloud);
+//  PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
+//  preprocess(cloud_ptr);
+//  cloud_vector_.push_back(*cloud_ptr);
 }
 
 }/*end namespace*/
