@@ -187,7 +187,6 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	std::cout << "save path is updated: " << save_path_ << std::endl;
 
 	PointCloud<PointType>::Ptr cloud_ptr(new PointCloud<PointType>);
-	PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
 	PointCloud<Normal>::Ptr cloud_normals(new PointCloud<Normal>);
 	PointCloud<PointType>::Ptr keypoint_cloud_ptr (new PointCloud<PointType>);
 	PointCloud<FPFHSignature33>::Ptr FPFH_signature_scene(new PointCloud<FPFHSignature33>);
@@ -246,14 +245,21 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	computeFPFHLRFs(cloud_transformed, keypoint_cloud_ptr, cloud_normals, FPFH_LRF_scene);
 
 	// region growing
-	copyPointCloud(*keypoint_cloud_ptr, *cloud_ptr_xyz);
-	std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-	regionGrowing(cloud_ptr_xyz, cloud_normals);
-	regionGrowingRGB(keypoint_cloud_ptr, cloud_normals);
+//  PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
+//	copyPointCloud(*keypoint_cloud_ptr, *cloud_ptr_xyz);
+//	std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+//	regionGrowing(cloud_ptr_xyz, cloud_normals);
+//	regionGrowingRGB(keypoint_cloud_ptr, cloud_normals);
 
-	std::cout << "service done!" << std::endl;
+  ROS_INFO("combine points and normals for poisson" );
+  PointCloud<PointXYZRGBNormal>::Ptr points_and_normals(new PointCloud<PointXYZRGBNormal>());
+  concatenateFields(*cloud_transformed, *cloud_normals, *points_and_normals);
+	poisson(points_and_normals);
+
+	ROS_INFO("get surface service done!");
 
   if(!keep_snapshot_)cloud_vector_.clear();
+
 	return true;
 }
 
@@ -289,7 +295,7 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 }
 
 
-bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr){
+bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr, PointCloud<PointType>::Ptr output_cloud_){
 	// projection
 	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
 	ModelCoefficients::Ptr coefficients(new ModelCoefficients());
@@ -307,23 +313,35 @@ bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr
 	io::savePLYFile(path, *cloud_projected);
 
 	// concatination
-	PointCloud<PointType>::Ptr cloud_combined(new PointCloud<PointType>());
-	cloud_combined = cloud_ptr;
-	*cloud_combined += *cloud_projected;
+	*output_cloud_ = *cloud_ptr;
+	*output_cloud_ += *cloud_projected;
 	path = save_path_ + "/combined.ply";
-	io::savePLYFile(path, *cloud_combined);
-
-	PointCloud<Normal>::Ptr cloud_normals_(new PointCloud<Normal>());
-	PointCloud<PointXYZRGBNormal>::Ptr cloud_smoothed_normals(new PointCloud<PointXYZRGBNormal>());
-
-	std::cout << "combine points and normals" << std::endl;
-	computeNormals(cloud_combined, cloud_normals_);
-	concatenateFields(*cloud_combined, *cloud_normals_, *cloud_smoothed_normals);
-	poisson(cloud_smoothed_normals);
+	io::savePLYFile(path, *output_cloud_);
 
 	return true;
 }
 
+bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals)
+{
+  std::cout << "begin poisson reconstruction" << std::endl;
+  Poisson<PointXYZRGBNormal> poisson;
+  poisson.setDepth(9);
+  poisson.setManifold(true);
+  // poisson.setSmaplesPerNode(1.0);
+  // poisson.setRatioDiameter(1.25);
+  poisson.setDegree(2);
+  poisson.setIsoDivide(8);
+  // poisson.setSolveDivide(8);
+  poisson.setOutputPolygons(true);
+  poisson.setInputCloud(cloud_smoothed_normals);
+  PolygonMesh mesh;
+  poisson.reconstruct(mesh);
+//  save_path_ = ros::package::getPath("urdf_models") + "/models/" + model_name;
+  std::string path = save_path_ + "/poisson.ply";
+  io::savePLYFile(path, mesh);
+
+  return true;
+}
 
 //bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
 bool SurfaceReconstructionSrv::preprocess(PointCloud<PointType>::Ptr preprocessed_cloud_ptr_)
@@ -674,28 +692,6 @@ bool SurfaceReconstructionSrv::regionGrowingRGB(const PointCloud<PointType>::Con
     ROS_ERROR("region growing didn't find cluster");
     return false;
   }
-}
-
-bool SurfaceReconstructionSrv::poisson(const PointCloud<PointXYZRGBNormal>::Ptr &cloud_smoothed_normals)
-{
-  std::cout << "begin poisson reconstruction" << std::endl;
-  Poisson<PointXYZRGBNormal> poisson;
-  poisson.setDepth(9);
-  poisson.setManifold(0);
-  // poisson.setSmaplesPerNode(1.0);
-  // poisson.setRatioDiameter(1.25);
-  poisson.setDegree(2);
-  poisson.setIsoDivide(8);
-  // poisson.setSolveDivide(8);
-  poisson.setOutputPolygons(0);
-  poisson.setInputCloud(cloud_smoothed_normals);
-  PolygonMesh mesh;
-  poisson.reconstruct(mesh);
-//  save_path_ = ros::package::getPath("urdf_models") + "/models/" + model_name;
-  std::string path = save_path_ + "/poisson.ply";
-  io::savePLYFile(path, mesh);
-
-  return true;
 }
 
 boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normalsVis(PointCloud<PointType>::Ptr &cloud, PointCloud<Normal>::Ptr &normals)

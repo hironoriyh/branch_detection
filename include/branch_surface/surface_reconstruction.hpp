@@ -66,7 +66,7 @@ private:
 
 	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_);
 
-	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr);
+	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr,  PointCloud<PointType>::Ptr output_cloud_);
 
 	bool filtering(PointCloud<PointType>::Ptr input_cloud_ptr_, PointCloud<PointType>::Ptr preprocessed_cloud_ptr_);
 
