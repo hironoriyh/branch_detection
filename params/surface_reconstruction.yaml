@@ -2,12 +2,12 @@ leaf_size: 0.0025
 model_folder: ""
 planarSegmentationTolerance: 0.02
 min_number_of_inliers: 5000
-xmin: -0.1
-xmax: 0.1
-ymin: -0.1
-ymax: 0.1
+xmin: -0.2
+xmax: 0.2
+ymin: -0.2
+ymax: 0.2
 zmin: 0.0
-zmax: 0.5
+zmax: 0.6
 
 
 bin_size: 0.015
@@ -27,7 +27,7 @@ grid_res: 200
 
 
 use_saved_pc: false
-full_display: false
+full_display: true
 use_all_points: true
 save_clouds: true
 normal_flip: true

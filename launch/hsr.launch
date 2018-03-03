@@ -8,7 +8,12 @@
     <rosparam command="load" file="$(find branch_surface)/params/surface_reconstruction.yaml"/>
     <param name="point_cloud_topic" value ="/hsrb/head_rgbd_sensor/depth_registered/rectified_points" />
     <param name="camera_frame" value ="head_rgbd_sensor_rgb_frame" />
-    
+  </node>
+
+  <node pkg="object_detection" type="object_detection_service" name="object_detection_service" output="screen">
+   <rosparam command="load" file="$(find branch_surface)/params/detection.yaml"/>
+   <param name="point_cloud_topic" value ="/hsrb/head_rgbd_sensor/depth_registered/rectified_points" />
+   <param name="package_path" value ="branch_surface" />
   </node>
 
   <node pkg="object_detection" type="object_pose_refinement_service" name="object_pose_refinement_service" output="screen">
@@ -17,11 +22,5 @@
    <param name="package_path" value ="branch_surface" />
   </node>
   
-  <node pkg="object_detection" type="object_detection_service" name="object_detection_service" output="screen">
-   <rosparam command="load" file="$(find branch_surface)/params/detection.yaml"/>
-   <param name="point_cloud_topic" value ="/hsrb/head_rgbd_sensor/depth_registered/rectified_points" />
-   <param name="package_path" value ="branch_surface" />
-  </node>
-
 
 </launch>

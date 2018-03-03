@@ -358,17 +358,6 @@ bool SurfaceReconstructionSrv::filtering(PointCloud<PointType>::Ptr input_cloud_
 {
 
   ROS_INFO("pass through filter");
-  // Create the filtering object
-//  PassThrough<PointType> pass;
-//  pass.setInputCloud(input_cloud_ptr_);
-//  pass.setFilterFieldName("x");
-//  pass.setFilterLimits(xmin_, xmax_);
-//  pass.setFilterFieldName("y");
-//  pass.setFilterLimits(ymin_, ymax_);
-//  pass.setFilterFieldName("z");
-//  pass.setFilterLimits(zmin_, zmax_);
-//  //pass.setFilterLimitsNegative (true);
-//  pass.filter(*preprocessed_cloud_ptr_);
 
   CropBox<PointType> boxFilter;
   boxFilter.setMin(Eigen::Vector4f(xmin_, ymin_, zmin_, 1.0));
