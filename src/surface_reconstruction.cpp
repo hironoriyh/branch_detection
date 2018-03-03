@@ -270,12 +270,12 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 //	regionGrowingRGB(keypoint_cloud_ptr, cloud_normals);
 
   ROS_INFO("combine points and normals for poisson" );
-  PointCloud<PointType>::Ptr projected_(new PointCloud<PointType>);
-  projectCloud(cloud_transformed, projected_);
-  computeNormals(projected_, cloud_normals);
+//  PointCloud<PointType>::Ptr projected_(new PointCloud<PointType>);
+//  projectCloud(cloud_transformed, projected_);
+//  computeNormals(projected_, cloud_normals);
 
   PointCloud<PointXYZRGBNormal>::Ptr points_and_normals(new PointCloud<PointXYZRGBNormal>());
-  concatenateFields(*projected_, *cloud_normals, *points_and_normals);
+  concatenateFields(*cloud_transformed, *cloud_normals, *points_and_normals);
 	poisson(points_and_normals);
 
 	ROS_INFO("get surface service done!");
@@ -835,7 +835,8 @@ bool SurfaceReconstructionSrv::DetectObject(branch_surface::DetectObject srv)
 //      visualization_msgs::Marker::MESH_RESOURCE, model_pose.pose, j, .5, .5, .5, .8);
 //
 //      std::string model_path = ros::package::getPath(save_package_) + "/models/" + id + "/mesh/mesh.dae";
-      std::string model_path =ros::package::getPath(save_package_) + "/models/" + id + "/mesh/mesh.stl";
+      std::string model_path ="/home/hyoshdia/git/branch_detection/models/" + id + "/mesh/mesh.stl";
+
       object_mesh_marker.mesh_resource = model_path;
       object_mesh_marker.ns = id;
       object_mesh_marker.header.frame_id =camera_frame_;
