@@ -117,12 +117,21 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
   bound_vec_.push_back(zmin_);
   bound_vec_.push_back(zmax_);
 
+  ros::ServiceServer object_detection_server_ = nodeHandle_.advertiseService("/visualize_object", &SurfaceReconstructionSrv::detectObjectCallback, this);
+
   ros::ServiceServer service_get_model = nodeHandle_.advertiseService("/get_surface", &SurfaceReconstructionSrv::callGetSurface, this);
+
   ros::ServiceServer service_snapshot = nodeHandle_.advertiseService("/snap_shot", &SurfaceReconstructionSrv::callSnapShot, this);
 
-
   cameraPoseStateSubscriber_ = nodeHandle_.subscribe<geometry_msgs::PoseStamped>("/aruco/pose", 1, &SurfaceReconstructionSrv::CameraPoseCallback, this);
+//  cameraPoseStatePublisher_ = nodeHandle_.advertise
+
   camera_pose_pub_ = nodeHandle_.advertise<geometry_msgs::PoseStamped>("/camera_pose", 1, true);
+
+  mesh_publisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("/object_mesh", 1, true);
+
+  object_pose_publisher_ = nodeHandle_.advertise<geometry_msgs::PoseStamped>("/object_pose", 1, true);
+
 
   ROS_INFO("Ready to define surface.");
   ros::spin();
@@ -130,6 +139,14 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 
 SurfaceReconstructionSrv::~SurfaceReconstructionSrv()
 {
+}
+
+bool SurfaceReconstructionSrv::detectObjectCallback(branch_surface::DetectObject::Request& req, branch_surface::DetectObject::Response& res)
+{
+  branch_surface::DetectObject srv;
+  srv.request = req;
+  DetectObject(srv);
+  return true;
 }
 
 void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
@@ -144,9 +161,10 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 	tf::Transform transform;
 	tf::poseMsgToTF(camera_pose_.pose, transform);
   geometry_msgs::Pose pose_;
-  tf::Transform tf_optical_to_object = transform.inverse();
 
-  tf::poseTFToMsg(tf_optical_to_object, pose_);
+  tf_optical_to_object_ = transform.inverse();
+
+  tf::poseTFToMsg(tf_optical_to_object_, pose_);
   geometry_msgs::PoseStamped camera_to_object = camera_pose_;
   camera_to_object.pose = pose_;
   camera_pose_pub_.publish(camera_to_object);
@@ -154,7 +172,7 @@ void SurfaceReconstructionSrv::CameraPoseCallback(const geometry_msgs::PoseStamp
 
 //  ROS_INFO_STREAM("new_transform: " << tf_link_to_obj.getOrigin().getX() << " , "<< tf_link_to_obj.getOrigin().getY() << " , "<< tf_link_to_obj.getOrigin().getZ());
   static tf::TransformBroadcaster br;
-	br.sendTransform(tf::StampedTransform(tf_optical_to_object, ros::Time::now(), camera_frame_, "intermediate_object_frame"));
+	br.sendTransform(tf::StampedTransform(tf_optical_to_object_, ros::Time::now(), camera_frame_, "intermediate_object_frame"));
   tf::Transform local_object_frame (tf::Quaternion(quat_yaml_["x"], quat_yaml_["y"], quat_yaml_["z"], quat_yaml_["w"]), tf::Vector3(pos_yaml_["x"], pos_yaml_["y"], pos_yaml_["z"]));
   br.sendTransform(tf::StampedTransform(local_object_frame, ros::Time::now(), "intermediate_object_frame", object_frame_));
 }
@@ -252,8 +270,12 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 //	regionGrowingRGB(keypoint_cloud_ptr, cloud_normals);
 
   ROS_INFO("combine points and normals for poisson" );
+  PointCloud<PointType>::Ptr projected_(new PointCloud<PointType>);
+  projectCloud(cloud_transformed, projected_);
+  computeNormals(projected_, cloud_normals);
+
   PointCloud<PointXYZRGBNormal>::Ptr points_and_normals(new PointCloud<PointXYZRGBNormal>());
-  concatenateFields(*cloud_transformed, *cloud_normals, *points_and_normals);
+  concatenateFields(*projected_, *cloud_normals, *points_and_normals);
 	poisson(points_and_normals);
 
 	ROS_INFO("get surface service done!");
@@ -300,22 +322,24 @@ bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr
 	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
 	ModelCoefficients::Ptr coefficients(new ModelCoefficients());
 	coefficients->values.resize(4);
-	coefficients->values[0] = coefficients->values[1] = 0;
+
+  // coef of ax + by + cz +d =0
+	coefficients->values[0] = coefficients->values[1] = 0; // coef of ax + by + cz +d =0
 	coefficients->values[2] = 1;
-	coefficients->values[3] = 0;
+	coefficients->values[3] = -0.04;
 
 	ProjectInliers<PointType> proj;
 	proj.setModelType(SACMODEL_PLANE);
 	proj.setInputCloud(cloud_ptr);
 	proj.setModelCoefficients(coefficients);
 	proj.filter(*cloud_projected);
-	std::string path = save_path_ + "/projected.ply";
-	io::savePLYFile(path, *cloud_projected);
+//	std::string path = save_path_ + "/projected.ply";
+//	io::savePLYFile(path, *cloud_projected);
 
 	// concatination
 	*output_cloud_ = *cloud_ptr;
 	*output_cloud_ += *cloud_projected;
-	path = save_path_ + "/combined.ply";
+	std::string path = save_path_ + "/combined.ply";
 	io::savePLYFile(path, *output_cloud_);
 
 	return true;
@@ -429,8 +453,6 @@ bool SurfaceReconstructionSrv::filtering(PointCloud<PointType>::Ptr input_cloud_
 
   return true;
 }
-
-
 
 
 bool SurfaceReconstructionSrv::DownSample(PointCloud<PointType>::Ptr &cloud_)
@@ -757,6 +779,95 @@ boost::shared_ptr<visualization::PCLVisualizer> SurfaceReconstructionSrv::normal
   viewer->addCoordinateSystem (0.1);
   viewer->initCameraParameters ();
   return (viewer);
+}
+
+bool SurfaceReconstructionSrv::DetectObject(branch_surface::DetectObject srv)
+{
+  ROS_INFO("branch_detection: DetectObject");
+  ros::ServiceClient client = nodeHandle_.serviceClient<branch_surface::DetectObject>("/object_detection");
+
+  if (!client.waitForExistence(ros::Duration(3.0))) {
+    return false;
+  }
+
+  if (client.call(srv)) {
+    ROS_INFO("Object detection executed.");
+    if(srv.response.model_ids.size() == 0) return false;
+
+    for (int j = 0; j < srv.response.model_ids.size(); j++) {
+      const ros::Time time = ros::Time::now();
+
+      geometry_msgs::PoseStamped model_camera_pose;
+      model_camera_pose.header.frame_id = camera_frame_;
+      model_camera_pose.header.stamp = time;
+      std::string id = srv.response.model_ids[j].data;
+      model_camera_pose.pose = srv.response.detected_model_poses[j];
+
+      geometry_msgs::PoseStamped model_pose;
+      model_pose.header.frame_id = object_frame_;
+      model_pose.header.stamp = time;
+
+      tf::Transform tf_camera;
+      tf::poseMsgToTF(model_camera_pose.pose, tf_camera);
+      tf::Transform tf_object = tf_camera * tf_optical_to_object_;
+      tf::poseTFToMsg(tf_object, model_pose.pose);
+
+//      tf::transformMsgToTF(model_camera_pose.pose, tf_camera);
+//      tf::transformStampedTFToMsg()
+
+//      try {
+//        const ros::Duration timeout(1);
+//        const ros::Duration polling_sleep_duration(4);
+//        std::string* error_msg = NULL;
+//        tf_listener_.waitForTransform(object_frame_, camera_frame_, time, timeout, polling_sleep_duration, error_msg);
+//        tf_listener_.transformPose(object_frame_, model_camera_pose, model_pose);
+//      }
+//      catch (tf2::TransformException &ex) {
+//        ROS_WARN("%s", ex.what());
+//        ros::Duration(1.0).sleep();
+//        continue;
+//      }
+
+      // Visualize object mesh.
+      ROS_INFO_STREAM("DetectObject \n "   << model_pose.pose);
+      visualization_msgs::Marker object_mesh_marker = VisualizeMarker(
+          visualization_msgs::Marker::MESH_RESOURCE, model_camera_pose.pose, j, .5, .5, .5, .8);
+//      visualization_msgs::Marker::MESH_RESOURCE, model_pose.pose, j, .5, .5, .5, .8);
+//
+//      std::string model_path = ros::package::getPath(save_package_) + "/models/" + id + "/mesh/mesh.dae";
+      std::string model_path =ros::package::getPath(save_package_) + "/models/" + id + "/mesh/mesh.stl";
+      object_mesh_marker.mesh_resource = model_path;
+      object_mesh_marker.ns = id;
+      object_mesh_marker.header.frame_id =camera_frame_;
+//      object_mesh_marker.header.frame_id =object_frame_;
+      mesh_publisher_.publish(object_mesh_marker);
+      object_pose_publisher_.publish(model_camera_pose);
+//      object_pose_ = model_pose.pose;
+    }
+  } else {
+    ROS_WARN("detect object: Could not call client.");
+  }
+  return true;
+}
+
+visualization_msgs::Marker SurfaceReconstructionSrv::VisualizeMarker(const int marker_type, const geometry_msgs::Pose pose, const int id, const float r, const float g, const float b, const float a)
+{
+  visualization_msgs::Marker marker;
+  // Set the color -- be sure to set alpha to something non-zero!
+  marker.color.r = r;
+  marker.color.g = g;
+  marker.color.b = b;
+  marker.color.a = a;
+  marker.header.frame_id = object_frame_;
+  marker.id = id;
+  marker.type = marker_type;
+  marker.action = visualization_msgs::Marker::ADD;
+  marker.header.stamp = ros::Time::now();
+  marker.pose = pose;
+  marker.scale.x = 1;
+  marker.scale.y = 1;
+  marker.scale.z = 1;
+  return marker;
 }
 
 void SurfaceReconstructionSrv::saveCloud(const sensor_msgs::PointCloud2& cloud)

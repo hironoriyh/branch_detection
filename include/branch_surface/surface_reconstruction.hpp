@@ -1,7 +1,7 @@
 /*
  * surface_reconstruction_srv.hpp
  *
- *  Created on: Apr 29, 2016
+ *  Created on: Jan 29, 2018
  *      Author: hironori yoshida
  */
 
@@ -9,27 +9,29 @@
 #define INCLUDE_OBJECT_DETECTION_SURFACE_RECONSTRUCTION_SERVICE_HPP_
 
 #include <vector>
+
+// pcl
 #include <pcl/PCLPointCloud2.h>
-#include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
-//#include <pcl/conversions.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/search/kdtree.h>
-
-#include <std_srvs/Empty.h>
-
-// keypoint descriptors
+// pcl keypoint descriptors
 #include <pcl/keypoints/iss_3d.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/fpfh.h>
 #include <pcl/features/board.h>
 
-#include <geometry_msgs/PoseStamped.h>
+// tf
 #include <tf2_ros/transform_listener.h>
 #include <tf/transform_listener.h>
 
+// ros srvs
 #include <branch_surface/DetectObject.h>
-
+#include <std_srvs/Empty.h>
+// ros msgs
+#include <sensor_msgs/PointCloud2.h>
+#include <visualization_msgs/Marker.h>
+#include <geometry_msgs/PoseStamped.h>
 
 using namespace pcl;
 typedef PointXYZRGB PointType;
@@ -57,6 +59,8 @@ public:
 	virtual ~SurfaceReconstructionSrv();
 
 private:
+
+	bool detectObjectCallback(branch_surface::DetectObject::Request& req, branch_surface::DetectObject::Response& res);
 
 	bool callSnapShot(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 
@@ -95,17 +99,29 @@ private:
   boost::shared_ptr<visualization::PCLVisualizer> xyzVis(PointCloud<PointXYZ>::ConstPtr cloud);
   boost::shared_ptr<visualization::PCLVisualizer> normalsVis ( const PointCloud<PointType>::ConstPtr &cloud, PointCloud<Normal>::Ptr &normals);
 
+  bool DetectObject(DetectObject srv);
+
+  visualization_msgs::Marker VisualizeMarker(const int marker_type, const geometry_msgs::Pose pose, const int id, const float r, const float g, const float b, const float a);
+
+
 	ros::NodeHandle nodeHandle_;
 
 	ros::Subscriber cameraPoseStateSubscriber_;
 
+	ros::Publisher cameraPoseStatePublisher_;
+
 	ros::Publisher camera_pose_pub_;
 
+	ros::Publisher mesh_publisher_;
+
+	ros::Publisher object_pose_publisher_;
 
 	geometry_msgs::PoseStamped camera_pose_;
 
+	tf::Transform tf_optical_to_object_;
 
 	std::vector<PointCloud<PointType>> cloud_vector_;
+
 	search::KdTree<PointType>::Ptr tree_;
 
 	float leaf_size_;
@@ -158,17 +174,6 @@ private:
 	std::map<std::string,double> quat_yaml_;
 	std::map<std::string,double> pos_yaml_;
 
-
-	//Keypoint Detection Parameters
-//	double normal_radius_;
-//	double salient_radius_;
-//	double border_radius_;
-//	double non_max_radius_;
-//	double gamma_21_;
-//	double gamma_32_;
-//	double min_neighbors_;
-//	int threads_;
-//  bool use_all_points_;
 
 // Clustering
 //	bool use_hough_;
