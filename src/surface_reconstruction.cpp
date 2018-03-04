@@ -57,6 +57,9 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/ModelCoefficients.h>
 
+#include <pcl/segmentation/extract_clusters.h>
+
+
 namespace surface_reconstruction_srv {
 
 SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
@@ -109,13 +112,6 @@ SurfaceReconstructionSrv::SurfaceReconstructionSrv(ros::NodeHandle nodeHandle)
 
   nodeHandle.getParam("/surface_reconstruction_service/camera_rot", quat_yaml_);
   nodeHandle.getParam("/surface_reconstruction_service/camera_pos", pos_yaml_);
-
-  bound_vec_.push_back(xmin_);
-  bound_vec_.push_back(xmax_);
-  bound_vec_.push_back(ymin_);
-  bound_vec_.push_back(ymax_);
-  bound_vec_.push_back(zmin_);
-  bound_vec_.push_back(zmax_);
 
   ros::ServiceServer object_detection_server_ = nodeHandle_.advertiseService("/visualize_object", &SurfaceReconstructionSrv::detectObjectCallback, this);
 
@@ -216,7 +212,10 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
     std::string file_name = save_path_ + "/pcd/Preprocessed_0.pcd";
     if (io::loadPCDFile<PointType>(file_name, *cloud_ptr) == -1)
       PCL_ERROR("Couldn't read pcd file \n");
-  } else {
+    *cloud_transformed = *cloud_ptr;
+  }
+  else
+  {
 
     if (cloud_vector_.size() < 1) {
       // Sample clouds
@@ -263,10 +262,11 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	computeFPFHLRFs(cloud_transformed, keypoint_cloud_ptr, cloud_normals, FPFH_LRF_scene);
 
 	// region growing
-//  PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
-//	copyPointCloud(*keypoint_cloud_ptr, *cloud_ptr_xyz);
-//	std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
-//	regionGrowing(cloud_ptr_xyz, cloud_normals);
+  PointCloud<PointXYZ>::Ptr cloud_ptr_xyz(new PointCloud<PointXYZ>);
+	copyPointCloud(*keypoint_cloud_ptr, *cloud_ptr_xyz);
+	std::cout << "xyz point has " << cloud_ptr_xyz->points.size() << " points." << std::endl;
+	euclidianClustering(cloud_ptr_xyz);
+	//	regionGrowing(cloud_ptr_xyz, cloud_normals);
 //	regionGrowingRGB(keypoint_cloud_ptr, cloud_normals);
 
   ROS_INFO("combine points and normals for poisson" );
@@ -317,7 +317,12 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 }
 
 
-bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr, PointCloud<PointType>::Ptr output_cloud_){
+bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr, PointCloud<PointType>::Ptr output_cloud_)
+{
+
+  pcl::PointXYZRGB minPt, maxPt;
+  pcl::getMinMax3D(*cloud_ptr, minPt, maxPt);
+
 	// projection
 	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
 	ModelCoefficients::Ptr coefficients(new ModelCoefficients());
@@ -600,6 +605,42 @@ bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::Cons
   return true;
 }
 
+bool SurfaceReconstructionSrv::euclidianClustering(const PointCloud<PointXYZ>::ConstPtr &cloud_filtered)
+{
+
+pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+  tree->setInputCloud (cloud_filtered);
+
+  std::vector<pcl::PointIndices> cluster_indices;
+  pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+  ec.setClusterTolerance (0.02); // 2cm
+  ec.setMinClusterSize (30);
+  ec.setMaxClusterSize (100);
+  ec.setSearchMethod (tree);
+  ec.setInputCloud (cloud_filtered);
+  ec.extract (cluster_indices);
+
+  int j = 0;
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
+  {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
+    for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
+      cloud_cluster->points.push_back (cloud_filtered->points[*pit]); //*
+    cloud_cluster->width = cloud_cluster->points.size ();
+    cloud_cluster->height = 1;
+    cloud_cluster->is_dense = true;
+
+    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << std::endl;
+    std::string path = save_path_ + "/Cluster_" + std::to_string(j) + ".ply";
+    io::savePLYFile(path, *cloud_cluster);
+
+    j++;
+  }
+
+  return (0);
+}
+
+
 bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_)
 {
   std::cout << "begin region growing" << std::endl;
@@ -619,16 +660,18 @@ bool SurfaceReconstructionSrv::regionGrowing(const PointCloud<PointXYZ>::ConstPt
   pass.setFilterLimits(0.0, 1.0);
   pass.filter(*indices);
 
+  ROS_INFO_STREAM("size of original pointcloud: " << cloud_->points.size() << " size of normal indice: " << indices->size());
+
   RegionGrowing<PointXYZ, Normal> reg;
-  reg.setMinClusterSize(500);
-  reg.setMaxClusterSize(1000000);
+  reg.setMinClusterSize(300);
+  reg.setMaxClusterSize(1000);
   reg.setSearchMethod(tree);
   reg.setNumberOfNeighbours(30);
   reg.setInputCloud(cloud_);
   //reg.setIndices (indices);
   reg.setInputNormals(local_normals);
   reg.setSmoothnessThreshold(3.0 / 180.0 * M_PI);
-  reg.setCurvatureThreshold(1.0);
+  reg.setCurvatureThreshold(1.5);
 
   std::vector<PointIndices> clusters;
   reg.extract(clusters);
@@ -831,16 +874,13 @@ bool SurfaceReconstructionSrv::DetectObject(branch_surface::DetectObject srv)
       // Visualize object mesh.
       ROS_INFO_STREAM("DetectObject \n "   << model_pose.pose);
       visualization_msgs::Marker object_mesh_marker = VisualizeMarker(
-          visualization_msgs::Marker::MESH_RESOURCE, model_camera_pose.pose, j, .5, .5, .5, .8);
-//      visualization_msgs::Marker::MESH_RESOURCE, model_pose.pose, j, .5, .5, .5, .8);
-//
-//      std::string model_path = ros::package::getPath(save_package_) + "/models/" + id + "/mesh/mesh.dae";
-      std::string model_path ="/home/hyoshdia/git/branch_detection/models/" + id + "/mesh/mesh.stl";
-
+//          visualization_msgs::Marker::MESH_RESOURCE, model_camera_pose.pose, j, .5, .5, .5, .8);
+      visualization_msgs::Marker::MESH_RESOURCE, model_pose.pose, j, .5, .5, .5, .8);
+      std::string model_path = "package://package/"  + save_package_ + "/models/" + id + "/mesh/mesh.stl";
+      // /home/hyoshdia/workspace/hayate/src/branch_detection/models/branch_2/mesh/mesh.stl
       object_mesh_marker.mesh_resource = model_path;
       object_mesh_marker.ns = id;
-      object_mesh_marker.header.frame_id =camera_frame_;
-//      object_mesh_marker.header.frame_id =object_frame_;
+//      object_mesh_marker.header.frame_id =camera_frame_;
       mesh_publisher_.publish(object_mesh_marker);
       object_pose_publisher_.publish(model_camera_pose);
 //      object_pose_ = model_pose.pose;

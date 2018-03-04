@@ -1,0 +1,4 @@
+- visualization of the mesh
+- mirror the pointcloud lower than the lowest threshold/ 
+- clustering
+- python mongoDB

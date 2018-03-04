@@ -81,6 +81,8 @@ private:
 
 	bool computeNormals(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
+	bool euclidianClustering(const PointCloud<PointXYZ>::ConstPtr &cloud_filtered);
+
 	bool regionGrowing(const PointCloud<PointXYZ>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
 
 	bool regionGrowingRGB(const PointCloud<PointType>::ConstPtr &cloud_, PointCloud<Normal>::Ptr &normals_);
