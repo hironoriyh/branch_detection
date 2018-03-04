@@ -68,7 +68,7 @@ private:
 
 	void CameraPoseCallback(const  geometry_msgs::PoseStamped::ConstPtr& msg);
 
-	bool reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_);
+	bool completeOcculusion(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_);
 
 	bool projectCloud(PointCloud<PointType>::Ptr cloud_ptr,  PointCloud<PointType>::Ptr output_cloud_);
 

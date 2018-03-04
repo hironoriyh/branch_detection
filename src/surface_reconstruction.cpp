@@ -233,10 +233,6 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 		std::cout << cloud_vector_.size() << " clouds are sampled. \n" <<
 		    "  width = " << cloud_vector_[0].width << "  height = " << cloud_vector_[0].height << "  size = " << cloud_vector_[0].size() << std::endl;
 
-//	  number_of_average_clouds_ = cloud_vector_.size()/2;
-//	  number_of_median_clouds_ = cloud_vector_.size()/2;
-//		preprocess(cloud_ptr);
-
 		for(int i=0; i< cloud_vector_.size(); i++) *cloud_ptr += cloud_vector_[i];
 
     std::string path;
@@ -245,10 +241,9 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
       io::savePLYFile(path, *cloud_ptr);
     }
 
-		if(reorient_cloud_) reorientModel(cloud_ptr, cloud_transformed);
-		else  *cloud_transformed = *cloud_ptr;
-
+    completeOcculusion(cloud_ptr, cloud_transformed);
 		DownSample(cloud_transformed);
+
 	}
 
 	// keypoints are not working with matching...
@@ -285,33 +280,50 @@ bool SurfaceReconstructionSrv::callGetSurface(DetectObject::Request &req, Detect
 	return true;
 }
 
-bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_)
+bool SurfaceReconstructionSrv::completeOcculusion(PointCloud<PointType>::Ptr cloud_ptr_, PointCloud<PointType>::Ptr cloud_transformed_)
 {
 
-  ROS_INFO("reorient_cloud");
+  ROS_INFO("completeOcculusion");
 
-   try {
-     tf::StampedTransform transform;
-     std_msgs::Header header;
-     pcl_conversions::fromPCL(cloud_ptr_->header, header);
-     const ros::Duration timeout(1);
-     const ros::Duration polling_sleep_duration(4);
-     std::string* error_msg = NULL;
+  pcl::PointXYZRGB minPt, maxPt;
+  IndicesPtr indices(new std::vector<int>);
 
-     tf_listener_.waitForTransform(object_frame_, camera_frame_, header.stamp, timeout, polling_sleep_duration, error_msg);
-     tf_listener_.lookupTransform(object_frame_, camera_frame_,  header.stamp, transform);
+  getMinMax3D(*cloud_ptr_, minPt, maxPt);
+  ROS_INFO_STREAM("completeOcculusion: minpt: " << minPt.x << " , " <<minPt.y << " , " << minPt.z);
+  ROS_INFO_STREAM("completeOcculusion: maxpt: " << maxPt.x << " , " <<maxPt.y << " , " << maxPt.z);
 
-     cloud_transformed_->header.frame_id = object_frame_;
-     ROS_INFO_STREAM("frame id befofe transform: " << cloud_ptr_->header.frame_id);
-     pcl_ros::transformPointCloud(*cloud_ptr_, *cloud_transformed_, transform.inverse());
-     cloud_transformed_->header = cloud_ptr_->header;
-     cloud_transformed_->header.frame_id = object_frame_;
-     ROS_INFO_STREAM("frame id after transform: " << cloud_transformed_->header.frame_id);
-   } catch (tf2::TransformException &ex) {
-     ROS_WARN("%s", ex.what());
-     ros::Duration(1.0).sleep();
-//     *cloud_transformed_ = *cloud_ptr_;
-   }
+  ROS_INFO_STREAM("completeOcculusion: number of pts before: " << cloud_ptr_->points.size());
+
+  pcl::CropBox<PointType> clipping_box;
+  clipping_box.setInputCloud(cloud_ptr_);
+  double min_z = minPt.z;
+  double max_z = maxPt.z;
+
+  clipping_box.setMin(Eigen::Vector4f(-0.2, -0.2,  0, 1));
+  clipping_box.setMax(Eigen::Vector4f(0.2, 0.2, max_z-min_z, 1));
+  Eigen::Affine3f boxTransform;
+  boxTransform.setIdentity();
+  clipping_box.setTransform(boxTransform);
+  clipping_box.setTranslation(Eigen::Vector3f(0, 0, min_z));
+//  clipping_box.setRotation(Eigen::Vector3f(0, 0, 0));
+  clipping_box.filter(*cloud_transformed_);
+
+   std::string path = save_path_ + "/clipped.ply";
+   io::savePLYFile(path, *cloud_transformed_);
+
+  // mirroring tshe cloud
+   for(int i =0; i< cloud_transformed_->points.size(); ++i) cloud_transformed_->points[i].z *= -1; //set the cloud to the min_z height, then
+//   path = save_path_ + "/mirrored.ply";
+//   io::savePLYFile(path, *cloud_transformed_);
+
+   for(int i =0; i< cloud_transformed_->points.size(); ++i) cloud_transformed_->points[i].z += 2*min_z*1.1; //set the cloud to the min_z height, then
+//   path = save_path_ + "/mirrored_shifted.ply";
+//   io::savePLYFile(path, *cloud_transformed_);
+
+  *cloud_transformed_ += *cloud_ptr_ ;
+
+  ROS_INFO_STREAM("completeOcculusion: number of pts after: " << cloud_transformed_->points.size());
+
 
   return true;
 }
@@ -319,9 +331,6 @@ bool SurfaceReconstructionSrv::reorientModel(PointCloud<PointType>::Ptr cloud_pt
 
 bool SurfaceReconstructionSrv::projectCloud(PointCloud<PointType>::Ptr cloud_ptr, PointCloud<PointType>::Ptr output_cloud_)
 {
-
-  pcl::PointXYZRGB minPt, maxPt;
-  pcl::getMinMax3D(*cloud_ptr, minPt, maxPt);
 
 	// projection
 	PointCloud<PointType>::Ptr cloud_projected(new PointCloud<PointType>());
@@ -607,30 +616,31 @@ bool SurfaceReconstructionSrv::computeFPFHLRFs(const PointCloud<PointType>::Cons
 
 bool SurfaceReconstructionSrv::euclidianClustering(const PointCloud<PointXYZ>::ConstPtr &cloud_filtered)
 {
+  std::cout << "begin euclidianClustering" << std::endl;
 
-pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
-  tree->setInputCloud (cloud_filtered);
+
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
+  tree->setInputCloud(cloud_filtered);
 
   std::vector<pcl::PointIndices> cluster_indices;
   pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-  ec.setClusterTolerance (0.02); // 2cm
-  ec.setMinClusterSize (30);
-  ec.setMaxClusterSize (100);
-  ec.setSearchMethod (tree);
-  ec.setInputCloud (cloud_filtered);
-  ec.extract (cluster_indices);
+  ec.setClusterTolerance(0.01);  // 2cm
+  ec.setMinClusterSize(100);
+  ec.setMaxClusterSize(20000);
+  ec.setSearchMethod(tree);
+  ec.setInputCloud(cloud_filtered);
+  ec.extract(cluster_indices);
 
   int j = 0;
-  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
-  {
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
-    for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
-      cloud_cluster->points.push_back (cloud_filtered->points[*pit]); //*
-    cloud_cluster->width = cloud_cluster->points.size ();
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it) {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster(new pcl::PointCloud<pcl::PointXYZ>);
+    for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit)
+      cloud_cluster->points.push_back(cloud_filtered->points[*pit]);  //*
+    cloud_cluster->width = cloud_cluster->points.size();
     cloud_cluster->height = 1;
     cloud_cluster->is_dense = true;
 
-    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << std::endl;
+    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size() << " data points." << std::endl;
     std::string path = save_path_ + "/Cluster_" + std::to_string(j) + ".ply";
     io::savePLYFile(path, *cloud_cluster);
 

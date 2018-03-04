@@ -27,7 +27,7 @@ full_display: false
 use_all_points: true
 save_clouds: true
 normal_flip: true
-reorient_cloud: false
+reorient_cloud: true
 keep_snapshot: true
 
 package_path: branch_surface
@@ -37,4 +37,4 @@ camera_frame: camera_rgb_optical_frame
 point_cloud_topic: /camera/depth_registered/points
 
 camera_rot: {x: 0 , y: 1, z: 0, w: 0}
-camera_pos: {x: 0.075, y: 0.135, z: 0.01}
+camera_pos: {x: 0.075, y: 0.135, z: 0.0}
